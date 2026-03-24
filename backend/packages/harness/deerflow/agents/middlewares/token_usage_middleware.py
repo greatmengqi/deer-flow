@@ -28,7 +28,7 @@ class TokenUsageMiddleware(AgentMiddleware):
         last = messages[-1]
         usage = getattr(last, "usage_metadata", None)
         if usage:
-            logger.debug(
+            logger.info(
                 "LLM token usage: input=%s output=%s total=%s",
                 usage.get("input_tokens", "?"),
                 usage.get("output_tokens", "?"),
