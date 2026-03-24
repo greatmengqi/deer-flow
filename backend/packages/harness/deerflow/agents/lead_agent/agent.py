@@ -10,6 +10,7 @@ from deerflow.agents.middlewares.loop_detection_middleware import LoopDetectionM
 from deerflow.agents.middlewares.memory_middleware import MemoryMiddleware
 from deerflow.agents.middlewares.subagent_limit_middleware import SubagentLimitMiddleware
 from deerflow.agents.middlewares.title_middleware import TitleMiddleware
+from deerflow.agents.middlewares.token_usage_middleware import TokenUsageMiddleware
 from deerflow.agents.middlewares.todo_middleware import TodoMiddleware
 from deerflow.agents.middlewares.tool_error_handling_middleware import build_lead_runtime_middlewares
 from deerflow.agents.middlewares.view_image_middleware import ViewImageMiddleware
@@ -226,6 +227,10 @@ def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_nam
     todo_list_middleware = _create_todo_list_middleware(is_plan_mode)
     if todo_list_middleware is not None:
         middlewares.append(todo_list_middleware)
+
+    # Add TokenUsageMiddleware when token_usage tracking is enabled
+    if get_app_config().token_usage.enabled:
+        middlewares.append(TokenUsageMiddleware())
 
     # Add TitleMiddleware
     middlewares.append(TitleMiddleware())
