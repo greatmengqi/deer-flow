@@ -41,7 +41,7 @@ from deerflow.config.paths import get_paths
 from deerflow.models import create_chat_model
 from deerflow.skills.installer import install_skill_from_archive
 from deerflow.uploads.manager import (
-    deduplicate_filename,
+    claim_unique_filename,
     delete_file_safe,
     enrich_file_listing,
     ensure_uploads_dir,
@@ -746,7 +746,7 @@ class DeerFlowClient:
                 raise FileNotFoundError(f"File not found: {f}")
             if not p.is_file():
                 raise ValueError(f"Path is not a file: {f}")
-            dest_name = deduplicate_filename(p.name, seen_names)
+            dest_name = claim_unique_filename(p.name, seen_names)
             resolved_files.append((p, dest_name))
             if not has_convertible_file and p.suffix.lower() in CONVERTIBLE_EXTENSIONS:
                 has_convertible_file = True
@@ -872,7 +872,8 @@ class DeerFlowClient:
             actual = get_paths().resolve_virtual_path(thread_id, path)
         except ValueError as exc:
             if "traversal" in str(exc):
-                raise PermissionError("Access denied: path traversal detected") from exc
+                from deerflow.uploads.manager import PathTraversalError
+                raise PathTraversalError("Path traversal detected") from exc
             raise
         if not actual.exists():
             raise FileNotFoundError(f"Artifact not found: {path}")

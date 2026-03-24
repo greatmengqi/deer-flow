@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from deerflow.config.paths import get_paths
 from deerflow.sandbox.sandbox_provider import get_sandbox_provider
 from deerflow.uploads.manager import (
+    PathTraversalError,
     delete_file_safe,
     enrich_file_listing,
     ensure_uploads_dir,
@@ -140,8 +141,8 @@ async def delete_uploaded_file(thread_id: str, filename: str) -> dict:
         return delete_file_safe(uploads_dir, filename, convertible_extensions=CONVERTIBLE_EXTENSIONS)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"File not found: {filename}")
-    except PermissionError:
-        raise HTTPException(status_code=403, detail="Access denied")
+    except PathTraversalError:
+        raise HTTPException(status_code=400, detail="Invalid path")
     except Exception as e:
         logger.error(f"Failed to delete {filename}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to delete {filename}: {str(e)}")

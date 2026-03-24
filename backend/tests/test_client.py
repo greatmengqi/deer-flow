@@ -18,6 +18,7 @@ from app.gateway.routers.skills import SkillInstallResponse, SkillResponse, Skil
 from app.gateway.routers.uploads import UploadResponse
 from deerflow.client import DeerFlowClient
 from deerflow.config.paths import Paths
+from deerflow.uploads.manager import PathTraversalError
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -808,7 +809,7 @@ class TestUploads:
         with tempfile.TemporaryDirectory() as tmp:
             uploads_dir = Path(tmp)
             with patch("deerflow.client.get_uploads_dir", return_value=uploads_dir), patch("deerflow.client.ensure_uploads_dir", return_value=uploads_dir):
-                with pytest.raises(PermissionError):
+                with pytest.raises(PathTraversalError):
                     client.delete_upload("thread-1", "../../etc/passwd")
 
 
@@ -850,7 +851,7 @@ class TestArtifacts:
             paths.sandbox_user_data_dir("t1").mkdir(parents=True)
 
             with patch("deerflow.client.get_paths", return_value=paths):
-                with pytest.raises(PermissionError):
+                with pytest.raises(PathTraversalError):
                     client.get_artifact("t1", "mnt/user-data/../../../etc/passwd")
 
 
@@ -2154,7 +2155,7 @@ class TestUploadDeleteSymlink:
             with patch("deerflow.client.get_uploads_dir", return_value=uploads_dir), patch("deerflow.client.ensure_uploads_dir", return_value=uploads_dir):
                 # The resolved path of the symlink escapes uploads_dir,
                 # so path traversal check should catch it.
-                with pytest.raises(PermissionError):
+                with pytest.raises(PathTraversalError):
                     client.delete_upload("thread-1", "harmless.txt")
 
             # The outside file must NOT have been deleted.

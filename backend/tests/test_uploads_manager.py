@@ -3,7 +3,8 @@
 import pytest
 
 from deerflow.uploads.manager import (
-    deduplicate_filename,
+    PathTraversalError,
+    claim_unique_filename,
     delete_file_safe,
     list_files_in_dir,
     normalize_filename,
@@ -39,30 +40,30 @@ class TestNormalizeFilename:
 
 
 # ---------------------------------------------------------------------------
-# deduplicate_filename
+# claim_unique_filename
 # ---------------------------------------------------------------------------
 
 
 class TestDeduplicateFilename:
     def test_no_collision(self):
         seen: set[str] = set()
-        assert deduplicate_filename("data.txt", seen) == "data.txt"
+        assert claim_unique_filename("data.txt", seen) == "data.txt"
         assert "data.txt" in seen
 
     def test_single_collision(self):
         seen = {"data.txt"}
-        assert deduplicate_filename("data.txt", seen) == "data_1.txt"
+        assert claim_unique_filename("data.txt", seen) == "data_1.txt"
         assert "data_1.txt" in seen
 
     def test_triple_collision(self):
         seen = {"data.txt", "data_1.txt", "data_2.txt"}
-        assert deduplicate_filename("data.txt", seen) == "data_3.txt"
+        assert claim_unique_filename("data.txt", seen) == "data_3.txt"
         assert "data_3.txt" in seen
 
     def test_mutates_seen(self):
         seen: set[str] = set()
-        deduplicate_filename("a.txt", seen)
-        deduplicate_filename("a.txt", seen)
+        claim_unique_filename("a.txt", seen)
+        claim_unique_filename("a.txt", seen)
         assert seen == {"a.txt", "a_1.txt"}
 
 
@@ -79,7 +80,7 @@ class TestValidatePathTraversal:
 
     def test_outside_base_raises(self, tmp_path):
         outside = tmp_path / ".." / "evil.txt"
-        with pytest.raises(PermissionError, match="traversal"):
+        with pytest.raises(PathTraversalError, match="traversal"):
             validate_path_traversal(outside, tmp_path)
 
     def test_symlink_escape(self, tmp_path):
@@ -87,7 +88,7 @@ class TestValidatePathTraversal:
         target.touch()
         link = tmp_path / "escape"
         link.symlink_to(target)
-        with pytest.raises(PermissionError, match="traversal"):
+        with pytest.raises(PathTraversalError, match="traversal"):
             validate_path_traversal(link, tmp_path)
 
 
@@ -141,5 +142,5 @@ class TestDeleteFileSafe:
             delete_file_safe(tmp_path, "nope.txt")
 
     def test_delete_traversal_raises(self, tmp_path):
-        with pytest.raises(PermissionError, match="traversal"):
+        with pytest.raises(PathTraversalError, match="traversal"):
             delete_file_safe(tmp_path, "../outside.txt")

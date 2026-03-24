@@ -11,6 +11,10 @@ from urllib.parse import quote
 
 from deerflow.config.paths import VIRTUAL_PATH_PREFIX, get_paths
 
+
+class PathTraversalError(ValueError):
+    """Raised when a path escapes its allowed base directory."""
+
 # thread_id must be alphanumeric, hyphens, underscores, or dots only.
 _SAFE_THREAD_ID = re.compile(r"^[a-zA-Z0-9._-]+$")
 
@@ -66,7 +70,7 @@ def normalize_filename(filename: str) -> str:
     return safe
 
 
-def deduplicate_filename(name: str, seen: set[str]) -> str:
+def claim_unique_filename(name: str, seen: set[str]) -> str:
     """Generate a unique filename by appending ``_N`` suffix on collision.
 
     Automatically adds the returned name to *seen* so callers don't need to.
@@ -95,12 +99,12 @@ def validate_path_traversal(path: Path, base: Path) -> None:
     """Verify that *path* is inside *base*.
 
     Raises:
-        PermissionError: If a path traversal is detected.
+        PathTraversalError: If a path traversal is detected.
     """
     try:
         path.resolve().relative_to(base.resolve())
     except ValueError:
-        raise PermissionError("Access denied: path traversal detected") from None
+        raise PathTraversalError("Path traversal detected") from None
 
 
 def list_files_in_dir(directory: Path) -> dict:
@@ -151,7 +155,7 @@ def delete_file_safe(base_dir: Path, filename: str, *, convertible_extensions: s
 
     Raises:
         FileNotFoundError: If the file does not exist.
-        PermissionError: If path traversal is detected.
+        PathTraversalError: If path traversal is detected.
     """
     file_path = (base_dir / filename).resolve()
     validate_path_traversal(file_path, base_dir)

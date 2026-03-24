@@ -1,5 +1,6 @@
 from .manager import (
-    deduplicate_filename,
+    PathTraversalError,
+    claim_unique_filename,
     delete_file_safe,
     enrich_file_listing,
     ensure_uploads_dir,
@@ -16,7 +17,8 @@ __all__ = [
     "get_uploads_dir",
     "ensure_uploads_dir",
     "normalize_filename",
-    "deduplicate_filename",
+    "PathTraversalError",
+    "claim_unique_filename",
     "validate_path_traversal",
     "list_files_in_dir",
     "delete_file_safe",
