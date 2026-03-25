@@ -98,6 +98,7 @@ def e2e_env(tmp_path, monkeypatch):
     # 2. Inject a clean AppConfig via the global singleton.
     config = _make_e2e_config()
     monkeypatch.setattr("deerflow.config.app_config._app_config", config)
+    monkeypatch.setattr("deerflow.config.app_config._app_config_is_custom", True)
 
     # 3. Disable title generation (extra LLM call, non-deterministic)
     from deerflow.config.title_config import TitleConfig
