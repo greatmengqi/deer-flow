@@ -31,6 +31,28 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# TodoMiddleware prompts (minimal SDK version)
+# ---------------------------------------------------------------------------
+
+_TODO_SYSTEM_PROMPT = """
+<todo_list_system>
+You have access to the `write_todos` tool to help you manage and track complex multi-step objectives.
+
+**CRITICAL RULES:**
+- Mark todos as completed IMMEDIATELY after finishing each step - do NOT batch completions
+- Keep EXACTLY ONE task as `in_progress` at any time (unless tasks can run in parallel)
+- Update the todo list in REAL-TIME as you work - this gives users visibility into your progress
+- DO NOT use this tool for simple tasks (< 3 steps) - just complete them directly
+</todo_list_system>
+"""
+
+_TODO_TOOL_DESCRIPTION = (
+    "Use this tool to create and manage a structured task list for complex work sessions.  "
+    "Only use for complex tasks (3+ steps)."
+)
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -42,6 +64,8 @@ def create_deep_agent(
     system_prompt: str | None = None,
     middleware: list[AgentMiddleware] | None = None,
     features: AgentFeatures | None = None,
+    extra_middleware: list[AgentMiddleware] | None = None,
+    plan_mode: bool = False,
     state_schema: type | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
     name: str = "default",
@@ -58,9 +82,14 @@ def create_deep_agent(
         System message.  ``None`` uses a minimal default.
     middleware:
         **Full takeover** — if provided, this exact list is used.
-        Cannot be combined with *features*.
+        Cannot be combined with *features* or *extra_middleware*.
     features:
-        Declarative feature flags.  Ignored when *middleware* is given.
+        Declarative feature flags.  Cannot be combined with *middleware*.
+    extra_middleware:
+        Additional middlewares inserted into the auto-assembled chain via
+        ``@Next``/``@Prev`` positioning.  Cannot be used with *middleware*.
+    plan_mode:
+        Enable TodoMiddleware for task tracking.
     state_schema:
         LangGraph state type.  Defaults to ``ThreadState``.
     checkpointer:
@@ -71,10 +100,12 @@ def create_deep_agent(
     Raises
     ------
     ValueError
-        If both *middleware* and *features* are provided.
+        If both *middleware* and *features*/*extra_middleware* are provided.
     """
     if middleware is not None and features is not None:
         raise ValueError("Cannot specify both 'middleware' and 'features'.  Use one or the other.")
+    if middleware is not None and extra_middleware:
+        raise ValueError("Cannot use 'extra_middleware' with 'middleware' (full takeover).")
 
     effective_tools: list[BaseTool] = list(tools or [])
     effective_state = state_schema or ThreadState
@@ -83,7 +114,9 @@ def create_deep_agent(
         effective_middleware = list(middleware)
     else:
         feat = features or AgentFeatures()
-        effective_middleware, extra_tools = _assemble_from_features(feat, name=name)
+        effective_middleware, extra_tools = _assemble_from_features(
+            feat, name=name, plan_mode=plan_mode, extra_middleware=extra_middleware or [],
+        )
         # Deduplicate by tool name — user-provided tools take priority.
         existing_names = {t.name for t in effective_tools}
         for t in extra_tools:
@@ -111,14 +144,29 @@ def _assemble_from_features(
     feat: AgentFeatures,
     *,
     name: str = "default",
+    plan_mode: bool = False,
+    extra_middleware: list[AgentMiddleware] | None = None,
 ) -> tuple[list[AgentMiddleware], list[BaseTool]]:
     """Build an ordered middleware chain + extra tools from *feat*.
 
-    Middleware order follows sequential append (no priority numbers):
-      1. Sandbox infrastructure (ThreadData → Uploads → Sandbox)
-      2. Always-on error handling (DanglingToolCall, ToolError)
-      3. Feature middlewares (summarization, auto_title, memory, vision, subagent)
-      4. Clarification (always last)
+    Middleware order matches ``make_lead_agent`` (14 middlewares):
+
+      0-2. Sandbox infrastructure (ThreadData → Uploads → Sandbox)
+      3.   DanglingToolCallMiddleware (always)
+      4.   GuardrailMiddleware (guardrail feature)
+      5.   ToolErrorHandlingMiddleware (always)
+      6.   SummarizationMiddleware (summarization feature)
+      7.   TodoMiddleware (plan_mode parameter)
+      8.   TitleMiddleware (auto_title feature)
+      9.   MemoryMiddleware (memory feature)
+      10.  ViewImageMiddleware (vision feature)
+      11.  SubagentLimitMiddleware (subagent feature)
+      12.  LoopDetectionMiddleware (always)
+      13.  ClarificationMiddleware (always last)
+
+    Two-phase ordering:
+      1. Built-in chain — fixed sequential append.
+      2. Extra middleware — inserted via @Next/@Prev.
 
     Each feature value is handled as:
       - ``False``: skip
@@ -128,7 +176,7 @@ def _assemble_from_features(
     chain: list[AgentMiddleware] = []
     extra_tools: list[BaseTool] = []
 
-    # --- Sandbox infrastructure ---
+    # --- [0-2] Sandbox infrastructure ---
     if feat.sandbox is not False:
         if isinstance(feat.sandbox, AgentMiddleware):
             chain.append(feat.sandbox)
@@ -141,20 +189,33 @@ def _assemble_from_features(
             chain.append(UploadsMiddleware())
             chain.append(SandboxMiddleware(lazy_init=True))
 
-    # --- Always-on error handling ---
+    # --- [3] DanglingToolCall (always) ---
     chain.append(DanglingToolCallMiddleware())
+
+    # --- [4] Guardrail ---
+    if feat.guardrail is not False:
+        if isinstance(feat.guardrail, AgentMiddleware):
+            chain.append(feat.guardrail)
+        else:
+            raise ValueError("guardrail=True requires a custom AgentMiddleware instance (no built-in GuardrailMiddleware yet)")
+
+    # --- [5] ToolErrorHandling (always) ---
     chain.append(ToolErrorHandlingMiddleware())
 
-    # --- Summarization ---
+    # --- [6] Summarization ---
     if feat.summarization is not False:
         if isinstance(feat.summarization, AgentMiddleware):
             chain.append(feat.summarization)
         else:
-            from langchain.agents.middleware import SummarizationMiddleware
+            raise ValueError("summarization=True requires a custom AgentMiddleware instance (SummarizationMiddleware needs a model argument)")
 
-            chain.append(SummarizationMiddleware())
+    # --- [7] TodoMiddleware (plan_mode) ---
+    if plan_mode:
+        from deerflow.agents.middlewares.todo_middleware import TodoMiddleware
 
-    # --- Auto Title ---
+        chain.append(TodoMiddleware(system_prompt=_TODO_SYSTEM_PROMPT, tool_description=_TODO_TOOL_DESCRIPTION))
+
+    # --- [8] Auto Title ---
     if feat.auto_title is not False:
         if isinstance(feat.auto_title, AgentMiddleware):
             chain.append(feat.auto_title)
@@ -163,7 +224,7 @@ def _assemble_from_features(
 
             chain.append(TitleMiddleware())
 
-    # --- Memory ---
+    # --- [9] Memory ---
     if feat.memory is not False:
         if isinstance(feat.memory, AgentMiddleware):
             chain.append(feat.memory)
@@ -172,7 +233,7 @@ def _assemble_from_features(
 
             chain.append(MemoryMiddleware(agent_name=name))
 
-    # --- Vision ---
+    # --- [10] Vision ---
     if feat.vision is not False:
         if isinstance(feat.vision, AgentMiddleware):
             chain.append(feat.vision)
@@ -184,7 +245,7 @@ def _assemble_from_features(
 
         extra_tools.append(view_image_tool)
 
-    # --- Subagent ---
+    # --- [11] Subagent ---
     if feat.subagent is not False:
         if isinstance(feat.subagent, AgentMiddleware):
             chain.append(feat.subagent)
@@ -196,8 +257,99 @@ def _assemble_from_features(
 
         extra_tools.append(task_tool)
 
-    # --- Clarification (always last) ---
+    # --- [12] LoopDetection (always) ---
+    from deerflow.agents.middlewares.loop_detection_middleware import LoopDetectionMiddleware
+
+    chain.append(LoopDetectionMiddleware())
+
+    # --- [13] Clarification (always last among built-ins) ---
     chain.append(ClarificationMiddleware())
     extra_tools.append(ask_clarification_tool)
 
+    # --- Insert extra_middleware via @Next/@Prev ---
+    if extra_middleware:
+        _insert_extra(chain, extra_middleware)
+
     return chain, extra_tools
+
+
+# ---------------------------------------------------------------------------
+# Internal: extra middleware insertion with @Next/@Prev
+# ---------------------------------------------------------------------------
+
+
+def _insert_extra(chain: list[AgentMiddleware], extras: list[AgentMiddleware]) -> None:
+    """Insert extra middlewares into *chain* using ``@Next``/``@Prev`` anchors.
+
+    Algorithm:
+      1. Validate: no middleware has both @Next and @Prev.
+      2. Conflict detection: two extras with same direction + same anchor → error.
+      3. Insert unanchored extras before ClarificationMiddleware.
+      4. Insert anchored extras iteratively (supports cross-external anchoring).
+      5. If an anchor cannot be resolved after all rounds → error.
+    """
+    next_targets: dict[type, type] = {}
+    prev_targets: dict[type, type] = {}
+
+    anchored: list[tuple[AgentMiddleware, str, type]] = []
+    unanchored: list[AgentMiddleware] = []
+
+    for mw in extras:
+        next_anchor = getattr(type(mw), "_next_anchor", None)
+        prev_anchor = getattr(type(mw), "_prev_anchor", None)
+
+        if next_anchor and prev_anchor:
+            raise ValueError(f"{type(mw).__name__} cannot have both @Next and @Prev")
+
+        if next_anchor:
+            if next_anchor in next_targets:
+                raise ValueError(
+                    f"Conflict: {type(mw).__name__} and {next_targets[next_anchor].__name__} "
+                    f"both @Next({next_anchor.__name__})"
+                )
+            next_targets[next_anchor] = type(mw)
+            anchored.append((mw, "next", next_anchor))
+        elif prev_anchor:
+            if prev_anchor in prev_targets:
+                raise ValueError(
+                    f"Conflict: {type(mw).__name__} and {prev_targets[prev_anchor].__name__} "
+                    f"both @Prev({prev_anchor.__name__})"
+                )
+            prev_targets[prev_anchor] = type(mw)
+            anchored.append((mw, "prev", prev_anchor))
+        else:
+            unanchored.append(mw)
+
+    # Unanchored → before ClarificationMiddleware (last built-in)
+    clarification_idx = len(chain) - 1
+    for mw in unanchored:
+        chain.insert(clarification_idx, mw)
+        clarification_idx += 1
+
+    # Anchored → iterative insertion (supports external-to-external anchoring)
+    pending = list(anchored)
+    max_rounds = len(pending) + 1
+    for _ in range(max_rounds):
+        if not pending:
+            break
+        remaining = []
+        for mw, direction, anchor in pending:
+            idx = next(
+                (i for i, m in enumerate(chain) if isinstance(m, anchor)),
+                None,
+            )
+            if idx is None:
+                remaining.append((mw, direction, anchor))
+                continue
+            if direction == "next":
+                chain.insert(idx + 1, mw)
+            else:
+                chain.insert(idx, mw)
+        if len(remaining) == len(pending):
+            names = [type(m).__name__ for m, _, _ in remaining]
+            anchors = [a.__name__ for _, _, a in remaining]
+            raise ValueError(
+                f"Cannot resolve positions for {', '.join(names)} "
+                f"— anchors {', '.join(anchors)} not found in chain"
+            )
+        pending = remaining
