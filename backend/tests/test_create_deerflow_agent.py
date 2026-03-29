@@ -788,3 +788,65 @@ def test_extra_opposite_direction_same_anchor_conflict():
             features=RuntimeFeatures(sandbox=False),
             extra_middleware=[AfterDangling(), BeforeDangling()],
         )
+
+
+# ===========================================================================
+# Input validation and error message hardening
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# 39. @Next with non-AgentMiddleware anchor → TypeError
+# ---------------------------------------------------------------------------
+def test_next_bad_anchor_type():
+    with pytest.raises(TypeError, match="AgentMiddleware subclass"):
+
+        @Next(str)  # type: ignore[arg-type]
+        class MW:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# 40. @Prev with non-AgentMiddleware anchor → TypeError
+# ---------------------------------------------------------------------------
+def test_prev_bad_anchor_type():
+    with pytest.raises(TypeError, match="AgentMiddleware subclass"):
+
+        @Prev(42)  # type: ignore[arg-type]
+        class MW:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# 41. extra_middleware with non-AgentMiddleware item → TypeError
+# ---------------------------------------------------------------------------
+def test_extra_middleware_bad_type():
+    with pytest.raises(TypeError, match="AgentMiddleware instances"):
+        create_deerflow_agent(
+            _make_mock_model(),
+            features=RuntimeFeatures(sandbox=False),
+            extra_middleware=[object()],  # type: ignore[list-item]
+        )
+
+
+# ---------------------------------------------------------------------------
+# 42. Circular dependency among extras → clear error message
+# ---------------------------------------------------------------------------
+def test_extra_circular_dependency():
+    from langchain.agents.middleware import AgentMiddleware
+
+    class MW_A(AgentMiddleware):
+        pass
+
+    class MW_B(AgentMiddleware):
+        pass
+
+    MW_A._next_anchor = MW_B  # type: ignore[attr-defined]
+    MW_B._next_anchor = MW_A  # type: ignore[attr-defined]
+
+    with pytest.raises(ValueError, match="Circular dependency"):
+        create_deerflow_agent(
+            _make_mock_model(),
+            features=RuntimeFeatures(sandbox=False),
+            extra_middleware=[MW_A(), MW_B()],
+        )
