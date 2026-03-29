@@ -171,11 +171,13 @@ async def clear_memory() -> MemoryResponse:
 async def create_memory_fact_endpoint(request: FactCreateRequest) -> MemoryResponse:
     """Create a single fact manually."""
     try:
-        return MemoryResponse(**get_client().create_memory_fact(
-            content=request.content,
-            category=request.category,
-            confidence=request.confidence,
-        ))
+        return MemoryResponse(
+            **get_client().create_memory_fact(
+                content=request.content,
+                category=request.category,
+                confidence=request.confidence,
+            )
+        )
     except ValueError as exc:
         raise _map_memory_fact_value_error(exc) from exc
     except OSError as exc:
@@ -206,12 +208,14 @@ async def delete_memory_fact_endpoint(fact_id: str) -> MemoryResponse:
 async def update_memory_fact_endpoint(fact_id: str, request: FactPatchRequest) -> MemoryResponse:
     """Partially update a single fact manually."""
     try:
-        return MemoryResponse(**get_client().update_memory_fact(
-            fact_id=fact_id,
-            content=request.content,
-            category=request.category,
-            confidence=request.confidence,
-        ))
+        return MemoryResponse(
+            **get_client().update_memory_fact(
+                fact_id=fact_id,
+                content=request.content,
+                category=request.category,
+                confidence=request.confidence,
+            )
+        )
     except ValueError as exc:
         raise _map_memory_fact_value_error(exc) from exc
     except KeyError as exc:

@@ -111,7 +111,7 @@ async def stream_run(thread_id: str, request: RunStreamRequest):
     store = get_store()
 
     store.get_or_create(thread_id)
-    store.set_status(thread_id, "busy")
+    store.set_busy(thread_id)
 
     run_id = str(uuid.uuid4())
     message = _extract_text(request.input) if request.input else ""
@@ -146,6 +146,7 @@ async def stream_run(thread_id: str, request: RunStreamRequest):
                     break
                 if isinstance(item, Exception):
                     yield _sse("error", {"message": str(item), "code": "INTERNAL_ERROR"})
+                    yield _sse("end", None)
                     break
 
                 ev = item
@@ -165,11 +166,13 @@ async def stream_run(thread_id: str, request: RunStreamRequest):
                         yield _sse("updates", {"agent": {"title": title}})
                         prev_title = title
 
+            yield _sse("end", None)
+
         finally:
             cancel.set()
             if last_values:
                 store.update_values(thread_id, last_values)
-            store.set_status(thread_id, "idle")
+            store.set_idle(thread_id)
             await fut
 
     return StreamingResponse(

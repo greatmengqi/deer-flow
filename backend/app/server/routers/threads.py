@@ -109,7 +109,6 @@ async def get_thread_state(thread_id: str) -> dict[str, Any]:
             "next": [],
             "tasks": [],
             "metadata": {},
-            "created_at": None,
             "checkpoint": None,
             "parent_checkpoint": None,
         }

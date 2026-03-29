@@ -2,7 +2,7 @@
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from threading import Lock
 from typing import Any
 
@@ -15,6 +15,7 @@ class ThreadRecord:
     metadata: dict[str, Any]
     status: str  # "idle", "busy", "interrupted", "error"
     values: dict[str, Any]
+    _active_runs: int = 0
 
     def to_dict(self, select: list[str] | None = None) -> dict[str, Any]:
         result = {
@@ -46,7 +47,7 @@ class ThreadStore:
         self._max_threads = max_threads
 
     def _now(self) -> str:
-        return datetime.now(timezone.utc).isoformat()
+        return datetime.now(UTC).isoformat()
 
     def _evict_if_needed(self) -> None:
         """Evict oldest idle threads when at capacity. Must hold self._lock."""
@@ -129,8 +130,20 @@ class ThreadStore:
                 record.values = {**record.values, **values}
                 record.updated_at = self._now()
 
-    def set_status(self, thread_id: str, status: str) -> None:
+    def set_busy(self, thread_id: str) -> None:
+        """Increment active run count and mark thread as busy."""
         with self._lock:
             record = self._threads.get(thread_id)
             if record:
-                record.status = status
+                record._active_runs = getattr(record, "_active_runs", 0) + 1
+                record.status = "busy"
+
+    def set_idle(self, thread_id: str) -> None:
+        """Decrement active run count; only mark idle when no runs remain."""
+        with self._lock:
+            record = self._threads.get(thread_id)
+            if record:
+                count = max(0, getattr(record, "_active_runs", 1) - 1)
+                record._active_runs = count
+                if count == 0:
+                    record.status = "idle"

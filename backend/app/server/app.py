@@ -13,6 +13,8 @@ from fastapi import FastAPI
 
 from app.gateway.routers import (
     agents as gw_agents,
+)
+from app.gateway.routers import (
     artifacts,
     channels,
     mcp,
@@ -20,8 +22,10 @@ from app.gateway.routers import (
     models,
     skills,
     suggestions,
-    threads as gw_threads,
     uploads,
+)
+from app.gateway.routers import (
+    threads as gw_threads,
 )
 from deerflow.agents.checkpointer import get_checkpointer
 from deerflow.client import DeerFlowClient

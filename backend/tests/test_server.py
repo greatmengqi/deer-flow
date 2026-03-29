@@ -1,11 +1,10 @@
 """Tests for the unified LangGraph-compatible server."""
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
-
 
 # ── ThreadStore unit tests ───────────────────────────────────────────────────
 
@@ -85,10 +84,21 @@ class TestThreadStore:
         assert vals["title"] == "Hello"
         assert vals["artifacts"] == ["a.txt"]
 
-    def test_set_status(self, store):
+    def test_set_busy_idle(self, store):
         store.create(thread_id="t1")
-        store.set_status("t1", "busy")
+        store.set_busy("t1")
         assert store.get("t1").status == "busy"
+        store.set_idle("t1")
+        assert store.get("t1").status == "idle"
+
+    def test_concurrent_busy_idle(self, store):
+        store.create(thread_id="t1")
+        store.set_busy("t1")
+        store.set_busy("t1")  # two concurrent runs
+        store.set_idle("t1")  # first finishes
+        assert store.get("t1").status == "busy"  # still busy
+        store.set_idle("t1")  # second finishes
+        assert store.get("t1").status == "idle"
 
     def test_eviction_at_capacity(self, store):
         # max_threads=5, create 5 then one more
@@ -104,7 +114,7 @@ class TestThreadStore:
         # Fill with busy threads
         for i in range(5):
             store.create(thread_id=f"t{i}")
-            store.set_status(f"t{i}", "busy")
+            store.set_busy(f"t{i}")
         # Create one more — can't evict any, so goes over capacity
         store.create(thread_id="overflow")
         assert store.get("overflow") is not None
@@ -210,11 +220,13 @@ class TestRunStreamEndpoint:
 
         # Mock DeerFlowClient.stream() to yield known events (dual mode)
         mock_client = MagicMock()
-        mock_client.stream.return_value = iter([
-            StreamEvent(type="messages-tuple", data={"type": "ai", "content": "hi", "id": "m1"}, metadata={"langgraph_checkpoint_ns": ""}),
-            StreamEvent(type="values", data={"title": "Test", "messages": [], "artifacts": []}),
-            StreamEvent(type="end", data={"usage": {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}}),
-        ])
+        mock_client.stream.return_value = iter(
+            [
+                StreamEvent(type="messages-tuple", data={"type": "ai", "content": "hi", "id": "m1"}, metadata={"langgraph_checkpoint_ns": ""}),
+                StreamEvent(type="values", data={"title": "Test", "messages": [], "artifacts": []}),
+                StreamEvent(type="end", data={"usage": {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}}),
+            ]
+        )
 
         from app.server import deps
 
@@ -256,9 +268,11 @@ class TestRunStreamEndpoint:
         from deerflow.client import StreamEvent
 
         mock_client = MagicMock()
-        mock_client.stream.return_value = iter([
-            StreamEvent(type="end", data={}),
-        ])
+        mock_client.stream.return_value = iter(
+            [
+                StreamEvent(type="end", data={}),
+            ]
+        )
 
         from app.server import deps
 
