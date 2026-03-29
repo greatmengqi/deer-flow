@@ -3,15 +3,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from deerflow.agents.memory.updater import (
-    clear_memory_data,
-    create_memory_fact,
-    delete_memory_fact,
-    get_memory_data,
-    reload_memory_data,
-    update_memory_fact,
-)
-from deerflow.config.memory_config import get_memory_config
+from app.server.deps import get_client
 
 router = APIRouter(prefix="/api", tags=["memory"])
 
@@ -144,8 +136,7 @@ async def get_memory() -> MemoryResponse:
         }
         ```
     """
-    memory_data = get_memory_data()
-    return MemoryResponse(**memory_data)
+    return MemoryResponse(**get_client().get_memory())
 
 
 @router.post(
@@ -155,16 +146,7 @@ async def get_memory() -> MemoryResponse:
     description="Reload memory data from the storage file, refreshing the in-memory cache.",
 )
 async def reload_memory() -> MemoryResponse:
-    """Reload memory data from file.
-
-    This forces a reload of the memory data from the storage file,
-    useful when the file has been modified externally.
-
-    Returns:
-        The reloaded memory data.
-    """
-    memory_data = reload_memory_data()
-    return MemoryResponse(**memory_data)
+    return MemoryResponse(**get_client().reload_memory())
 
 
 @router.delete(
@@ -174,13 +156,10 @@ async def reload_memory() -> MemoryResponse:
     description="Delete all saved memory data and reset the memory structure to an empty state.",
 )
 async def clear_memory() -> MemoryResponse:
-    """Clear all persisted memory data."""
     try:
-        memory_data = clear_memory_data()
+        return MemoryResponse(**get_client().clear_memory())
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to clear memory data.") from exc
-
-    return MemoryResponse(**memory_data)
 
 
 @router.post(
@@ -192,17 +171,15 @@ async def clear_memory() -> MemoryResponse:
 async def create_memory_fact_endpoint(request: FactCreateRequest) -> MemoryResponse:
     """Create a single fact manually."""
     try:
-        memory_data = create_memory_fact(
+        return MemoryResponse(**get_client().create_memory_fact(
             content=request.content,
             category=request.category,
             confidence=request.confidence,
-        )
+        ))
     except ValueError as exc:
         raise _map_memory_fact_value_error(exc) from exc
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to create memory fact.") from exc
-
-    return MemoryResponse(**memory_data)
 
 
 @router.delete(
@@ -212,15 +189,12 @@ async def create_memory_fact_endpoint(request: FactCreateRequest) -> MemoryRespo
     description="Delete a single saved memory fact by its fact id.",
 )
 async def delete_memory_fact_endpoint(fact_id: str) -> MemoryResponse:
-    """Delete a single fact from memory by fact id."""
     try:
-        memory_data = delete_memory_fact(fact_id)
+        return MemoryResponse(**get_client().delete_memory_fact(fact_id))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Memory fact '{fact_id}' not found.") from exc
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to delete memory fact.") from exc
-
-    return MemoryResponse(**memory_data)
 
 
 @router.patch(
@@ -232,20 +206,18 @@ async def delete_memory_fact_endpoint(fact_id: str) -> MemoryResponse:
 async def update_memory_fact_endpoint(fact_id: str, request: FactPatchRequest) -> MemoryResponse:
     """Partially update a single fact manually."""
     try:
-        memory_data = update_memory_fact(
+        return MemoryResponse(**get_client().update_memory_fact(
             fact_id=fact_id,
             content=request.content,
             category=request.category,
             confidence=request.confidence,
-        )
+        ))
     except ValueError as exc:
         raise _map_memory_fact_value_error(exc) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Memory fact '{fact_id}' not found.") from exc
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to update memory fact.") from exc
-
-    return MemoryResponse(**memory_data)
 
 
 @router.get(
@@ -255,34 +227,7 @@ async def update_memory_fact_endpoint(fact_id: str, request: FactPatchRequest) -
     description="Retrieve the current memory system configuration.",
 )
 async def get_memory_config_endpoint() -> MemoryConfigResponse:
-    """Get the memory system configuration.
-
-    Returns:
-        The current memory configuration settings.
-
-    Example Response:
-        ```json
-        {
-            "enabled": true,
-            "storage_path": ".deer-flow/memory.json",
-            "debounce_seconds": 30,
-            "max_facts": 100,
-            "fact_confidence_threshold": 0.7,
-            "injection_enabled": true,
-            "max_injection_tokens": 2000
-        }
-        ```
-    """
-    config = get_memory_config()
-    return MemoryConfigResponse(
-        enabled=config.enabled,
-        storage_path=config.storage_path,
-        debounce_seconds=config.debounce_seconds,
-        max_facts=config.max_facts,
-        fact_confidence_threshold=config.fact_confidence_threshold,
-        injection_enabled=config.injection_enabled,
-        max_injection_tokens=config.max_injection_tokens,
-    )
+    return MemoryConfigResponse(**get_client().get_memory_config())
 
 
 @router.get(
@@ -292,23 +237,8 @@ async def get_memory_config_endpoint() -> MemoryConfigResponse:
     description="Retrieve both memory configuration and current data in a single request.",
 )
 async def get_memory_status() -> MemoryStatusResponse:
-    """Get the memory system status including configuration and data.
-
-    Returns:
-        Combined memory configuration and current data.
-    """
-    config = get_memory_config()
-    memory_data = get_memory_data()
-
+    status = get_client().get_memory_status()
     return MemoryStatusResponse(
-        config=MemoryConfigResponse(
-            enabled=config.enabled,
-            storage_path=config.storage_path,
-            debounce_seconds=config.debounce_seconds,
-            max_facts=config.max_facts,
-            fact_confidence_threshold=config.fact_confidence_threshold,
-            injection_enabled=config.injection_enabled,
-            max_injection_tokens=config.max_injection_tokens,
-        ),
-        data=MemoryResponse(**memory_data),
+        config=MemoryConfigResponse(**status["config"]),
+        data=MemoryResponse(**status["data"]),
     )
