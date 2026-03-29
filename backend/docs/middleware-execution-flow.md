@@ -2,7 +2,7 @@
 
 ## Middleware 列表
 
-`create_deep_agent` 通过 `AgentFeatures` 组装的完整 middleware 链（默认全开时）：
+`create_deerflow_agent` 通过 `RuntimeFeatures` 组装的完整 middleware 链（默认全开时）：
 
 | # | Middleware | `before_agent` | `before_model` | `after_model` | `after_agent` | `wrap_tool_call` | 主 Agent | Subagent | 来源 |
 |---|-----------|:-:|:-:|:-:|:-:|:-:|:-:|:-:|------|
@@ -21,7 +21,7 @@
 | 12 | LoopDetectionMiddleware | | | ✓ | | | ✓ | ✗ | 始终开启 |
 | 13 | ClarificationMiddleware | | | ✓ | | | ✓ | ✗ | 始终最后 |
 
-主 agent **14 个** middleware（`make_lead_agent`），subagent **4 个**（ThreadData、Sandbox、Guardrail、ToolErrorHandling）。`create_deep_agent` Phase 1 实现 **13 个**（Guardrail 仅支持自定义实例，无内置默认）。
+主 agent **14 个** middleware（`make_lead_agent`），subagent **4 个**（ThreadData、Sandbox、Guardrail、ToolErrorHandling）。`create_deerflow_agent` Phase 1 实现 **13 个**（Guardrail 仅支持自定义实例，无内置默认）。
 
 ## 执行流程
 

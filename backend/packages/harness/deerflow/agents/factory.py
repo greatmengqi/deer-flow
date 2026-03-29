@@ -1,9 +1,13 @@
-"""Configuration-free factory for DeerFlow agents.
+"""Pure-argument factory for DeerFlow agents.
 
-``create_deep_agent`` accepts plain Python arguments — no YAML files, no
+``create_deerflow_agent`` accepts plain Python arguments — no YAML files, no
 global singletons.  It is the SDK-level entry point sitting between the raw
 ``langchain.agents.create_agent`` primitive and the config-driven
 ``make_lead_agent`` application factory.
+
+Note: the factory assembly itself is config-free, but some injected runtime
+components (e.g. ``task_tool`` for subagent) may still read global config at
+invocation time.  Full config-free runtime is a Phase 2 goal.
 """
 
 from __future__ import annotations
@@ -14,7 +18,7 @@ from typing import TYPE_CHECKING
 from langchain.agents import create_agent
 from langchain.agents.middleware import AgentMiddleware
 
-from deerflow.agents.features import AgentFeatures
+from deerflow.agents.features import RuntimeFeatures
 from deerflow.agents.middlewares.clarification_middleware import ClarificationMiddleware
 from deerflow.agents.middlewares.dangling_tool_call_middleware import DanglingToolCallMiddleware
 from deerflow.agents.middlewares.tool_error_handling_middleware import ToolErrorHandlingMiddleware
@@ -57,20 +61,24 @@ _TODO_TOOL_DESCRIPTION = (
 # ---------------------------------------------------------------------------
 
 
-def create_deep_agent(
+def create_deerflow_agent(
     model: BaseChatModel,
     tools: list[BaseTool] | None = None,
     *,
     system_prompt: str | None = None,
     middleware: list[AgentMiddleware] | None = None,
-    features: AgentFeatures | None = None,
+    features: RuntimeFeatures | None = None,
     extra_middleware: list[AgentMiddleware] | None = None,
     plan_mode: bool = False,
     state_schema: type | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
     name: str = "default",
 ) -> CompiledStateGraph:
-    """Create a DeerFlow agent.  Pure arguments — no config files read.
+    """Create a DeerFlow agent from plain Python arguments.
+
+    The factory assembly itself reads no config files.  Some injected runtime
+    components (e.g. ``task_tool``) may still depend on global config at
+    invocation time — see Phase 2 roadmap for full config-free runtime.
 
     Parameters
     ----------
@@ -113,7 +121,7 @@ def create_deep_agent(
     if middleware is not None:
         effective_middleware = list(middleware)
     else:
-        feat = features or AgentFeatures()
+        feat = features or RuntimeFeatures()
         effective_middleware, extra_tools = _assemble_from_features(
             feat, name=name, plan_mode=plan_mode, extra_middleware=extra_middleware or [],
         )
@@ -141,7 +149,7 @@ def create_deep_agent(
 
 
 def _assemble_from_features(
-    feat: AgentFeatures,
+    feat: RuntimeFeatures,
     *,
     name: str = "default",
     plan_mode: bool = False,
@@ -269,6 +277,11 @@ def _assemble_from_features(
     # --- Insert extra_middleware via @Next/@Prev ---
     if extra_middleware:
         _insert_extra(chain, extra_middleware)
+        # Invariant: ClarificationMiddleware must always be last.
+        # @Next(ClarificationMiddleware) could push it off the tail.
+        clar_idx = next(i for i, m in enumerate(chain) if isinstance(m, ClarificationMiddleware))
+        if clar_idx != len(chain) - 1:
+            chain.append(chain.pop(clar_idx))
 
     return chain, extra_tools
 

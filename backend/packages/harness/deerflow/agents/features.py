@@ -1,4 +1,4 @@
-"""Declarative feature flags and middleware positioning for create_deep_agent.
+"""Declarative feature flags and middleware positioning for create_deerflow_agent.
 
 Pure data classes and decorators — no I/O, no side effects.
 """
@@ -6,27 +6,31 @@ Pure data classes and decorators — no I/O, no side effects.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from langchain.agents.middleware import AgentMiddleware
 
 
 @dataclass
-class AgentFeatures:
-    """Declarative feature flags for ``create_deep_agent``.
+class RuntimeFeatures:
+    """Declarative feature flags for ``create_deerflow_agent``.
 
-    Each feature accepts:
+    Most features accept:
     - ``True``: use the built-in default middleware
     - ``False``: disable
     - An ``AgentMiddleware`` instance: use this custom implementation instead
+
+    ``summarization`` and ``guardrail`` have no built-in default — they only
+    accept ``False`` (disable) or an ``AgentMiddleware`` instance (custom).
     """
 
     sandbox: bool | AgentMiddleware = True
     memory: bool | AgentMiddleware = False
-    summarization: bool | AgentMiddleware = False
+    summarization: Literal[False] | AgentMiddleware = False
     subagent: bool | AgentMiddleware = False
     vision: bool | AgentMiddleware = False
     auto_title: bool | AgentMiddleware = False
-    guardrail: bool | AgentMiddleware = False
+    guardrail: Literal[False] | AgentMiddleware = False
 
 
 # ---------------------------------------------------------------------------

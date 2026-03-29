@@ -1,11 +1,11 @@
-"""Tests for create_deep_agent SDK entry point."""
+"""Tests for create_deerflow_agent SDK entry point."""
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from deerflow.agents.factory import create_deep_agent
-from deerflow.agents.features import AgentFeatures, Next, Prev
+from deerflow.agents.factory import create_deerflow_agent
+from deerflow.agents.features import RuntimeFeatures, Next, Prev
 
 
 def _make_mock_model():
@@ -26,7 +26,7 @@ def test_minimal_creation(mock_create_agent):
     mock_create_agent.return_value = MagicMock(name="compiled_graph")
     model = _make_mock_model()
 
-    result = create_deep_agent(model)
+    result = create_deerflow_agent(model)
 
     mock_create_agent.assert_called_once()
     assert result is mock_create_agent.return_value
@@ -44,7 +44,7 @@ def test_with_tools(mock_create_agent):
     model = _make_mock_model()
     tool = _make_mock_tool("search")
 
-    create_deep_agent(model, tools=[tool])
+    create_deerflow_agent(model, tools=[tool])
 
     call_kwargs = mock_create_agent.call_args[1]
     tool_names = [t.name for t in call_kwargs["tools"]]
@@ -59,7 +59,7 @@ def test_with_system_prompt(mock_create_agent):
     mock_create_agent.return_value = MagicMock()
     prompt = "You are a helpful assistant."
 
-    create_deep_agent(_make_mock_model(), system_prompt=prompt)
+    create_deerflow_agent(_make_mock_model(), system_prompt=prompt)
 
     call_kwargs = mock_create_agent.call_args[1]
     assert call_kwargs["system_prompt"] == prompt
@@ -71,9 +71,9 @@ def test_with_system_prompt(mock_create_agent):
 @patch("deerflow.agents.factory.create_agent")
 def test_features_mode(mock_create_agent):
     mock_create_agent.return_value = MagicMock()
-    feat = AgentFeatures(sandbox=True, auto_title=True)
+    feat = RuntimeFeatures(sandbox=True, auto_title=True)
 
-    create_deep_agent(_make_mock_model(), features=feat)
+    create_deerflow_agent(_make_mock_model(), features=feat)
 
     call_kwargs = mock_create_agent.call_args[1]
     middleware = call_kwargs["middleware"]
@@ -94,7 +94,7 @@ def test_middleware_takeover(mock_create_agent):
     custom_mw = MagicMock(name="custom_middleware")
     custom_mw.name = "custom"
 
-    create_deep_agent(_make_mock_model(), middleware=[custom_mw])
+    create_deerflow_agent(_make_mock_model(), middleware=[custom_mw])
 
     call_kwargs = mock_create_agent.call_args[1]
     assert call_kwargs["middleware"] == [custom_mw]
@@ -105,10 +105,10 @@ def test_middleware_takeover(mock_create_agent):
 # ---------------------------------------------------------------------------
 def test_middleware_and_features_conflict():
     with pytest.raises(ValueError, match="Cannot specify both"):
-        create_deep_agent(
+        create_deerflow_agent(
             _make_mock_model(),
             middleware=[MagicMock()],
-            features=AgentFeatures(),
+            features=RuntimeFeatures(),
         )
 
 
@@ -118,9 +118,9 @@ def test_middleware_and_features_conflict():
 @patch("deerflow.agents.factory.create_agent")
 def test_vision_injects_view_image_tool(mock_create_agent):
     mock_create_agent.return_value = MagicMock()
-    feat = AgentFeatures(vision=True, sandbox=False)
+    feat = RuntimeFeatures(vision=True, sandbox=False)
 
-    create_deep_agent(_make_mock_model(), features=feat)
+    create_deerflow_agent(_make_mock_model(), features=feat)
 
     call_kwargs = mock_create_agent.call_args[1]
     tool_names = [t.name for t in call_kwargs["tools"]]
@@ -133,9 +133,9 @@ def test_vision_injects_view_image_tool(mock_create_agent):
 @patch("deerflow.agents.factory.create_agent")
 def test_subagent_injects_task_tool(mock_create_agent):
     mock_create_agent.return_value = MagicMock()
-    feat = AgentFeatures(subagent=True, sandbox=False)
+    feat = RuntimeFeatures(subagent=True, sandbox=False)
 
-    create_deep_agent(_make_mock_model(), features=feat)
+    create_deerflow_agent(_make_mock_model(), features=feat)
 
     call_kwargs = mock_create_agent.call_args[1]
     tool_names = [t.name for t in call_kwargs["tools"]]
@@ -148,9 +148,9 @@ def test_subagent_injects_task_tool(mock_create_agent):
 @patch("deerflow.agents.factory.create_agent")
 def test_clarification_always_last(mock_create_agent):
     mock_create_agent.return_value = MagicMock()
-    feat = AgentFeatures(sandbox=True, memory=True, vision=True)
+    feat = RuntimeFeatures(sandbox=True, memory=True, vision=True)
 
-    create_deep_agent(_make_mock_model(), features=feat)
+    create_deerflow_agent(_make_mock_model(), features=feat)
 
     call_kwargs = mock_create_agent.call_args[1]
     middleware = call_kwargs["middleware"]
@@ -159,10 +159,10 @@ def test_clarification_always_last(mock_create_agent):
 
 
 # ---------------------------------------------------------------------------
-# 10. AgentFeatures default values
+# 10. RuntimeFeatures default values
 # ---------------------------------------------------------------------------
 def test_agent_features_defaults():
-    f = AgentFeatures()
+    f = RuntimeFeatures()
     assert f.sandbox is True
     assert f.memory is False
     assert f.summarization is False
@@ -181,7 +181,7 @@ def test_tool_deduplication(mock_create_agent):
     mock_create_agent.return_value = MagicMock()
     user_clarification = _make_mock_tool("ask_clarification")
 
-    create_deep_agent(_make_mock_model(), tools=[user_clarification], features=AgentFeatures(sandbox=False))
+    create_deerflow_agent(_make_mock_model(), tools=[user_clarification], features=RuntimeFeatures(sandbox=False))
 
     call_kwargs = mock_create_agent.call_args[1]
     names = [t.name for t in call_kwargs["tools"]]
@@ -196,9 +196,9 @@ def test_tool_deduplication(mock_create_agent):
 @patch("deerflow.agents.factory.create_agent")
 def test_sandbox_disabled(mock_create_agent):
     mock_create_agent.return_value = MagicMock()
-    feat = AgentFeatures(sandbox=False)
+    feat = RuntimeFeatures(sandbox=False)
 
-    create_deep_agent(_make_mock_model(), features=feat)
+    create_deerflow_agent(_make_mock_model(), features=feat)
 
     call_kwargs = mock_create_agent.call_args[1]
     mw_types = [type(m).__name__ for m in call_kwargs["middleware"]]
@@ -215,7 +215,7 @@ def test_checkpointer_passthrough(mock_create_agent):
     mock_create_agent.return_value = MagicMock()
     cp = MagicMock(name="checkpointer")
 
-    create_deep_agent(_make_mock_model(), checkpointer=cp)
+    create_deerflow_agent(_make_mock_model(), checkpointer=cp)
 
     call_kwargs = mock_create_agent.call_args[1]
     assert call_kwargs["checkpointer"] is cp
@@ -235,9 +235,9 @@ def test_custom_middleware_replaces_default(mock_create_agent):
         pass
 
     custom_memory = MyMemoryMiddleware()
-    feat = AgentFeatures(sandbox=False, memory=custom_memory)
+    feat = RuntimeFeatures(sandbox=False, memory=custom_memory)
 
-    create_deep_agent(_make_mock_model(), features=feat)
+    create_deerflow_agent(_make_mock_model(), features=feat)
 
     call_kwargs = mock_create_agent.call_args[1]
     middleware = call_kwargs["middleware"]
@@ -261,9 +261,9 @@ def test_custom_sandbox_replaces_group(mock_create_agent):
         pass
 
     custom_sb = MySandbox()
-    feat = AgentFeatures(sandbox=custom_sb)
+    feat = RuntimeFeatures(sandbox=custom_sb)
 
-    create_deep_agent(_make_mock_model(), features=feat)
+    create_deerflow_agent(_make_mock_model(), features=feat)
 
     call_kwargs = mock_create_agent.call_args[1]
     middleware = call_kwargs["middleware"]
@@ -280,9 +280,9 @@ def test_custom_sandbox_replaces_group(mock_create_agent):
 @patch("deerflow.agents.factory.create_agent")
 def test_always_on_error_handling(mock_create_agent):
     mock_create_agent.return_value = MagicMock()
-    feat = AgentFeatures(sandbox=False)
+    feat = RuntimeFeatures(sandbox=False)
 
-    create_deep_agent(_make_mock_model(), features=feat)
+    create_deerflow_agent(_make_mock_model(), features=feat)
 
     call_kwargs = mock_create_agent.call_args[1]
     mw_types = [type(m).__name__ for m in call_kwargs["middleware"]]
@@ -303,9 +303,9 @@ def test_vision_custom_middleware_still_injects_tool(mock_create_agent):
     class MyVision(AgentMiddleware):
         pass
 
-    feat = AgentFeatures(sandbox=False, vision=MyVision())
+    feat = RuntimeFeatures(sandbox=False, vision=MyVision())
 
-    create_deep_agent(_make_mock_model(), features=feat)
+    create_deerflow_agent(_make_mock_model(), features=feat)
 
     call_kwargs = mock_create_agent.call_args[1]
     tool_names = [t.name for t in call_kwargs["tools"]]
@@ -365,9 +365,9 @@ def test_extra_next_inserts_after_anchor(mock_create_agent):
         pass
 
     audit = MyAudit()
-    create_deep_agent(
+    create_deerflow_agent(
         _make_mock_model(),
-        features=AgentFeatures(sandbox=False),
+        features=RuntimeFeatures(sandbox=False),
         extra_middleware=[audit],
     )
 
@@ -395,9 +395,9 @@ def test_extra_prev_inserts_before_anchor(mock_create_agent):
         pass
 
     filt = MyFilter()
-    create_deep_agent(
+    create_deerflow_agent(
         _make_mock_model(),
-        features=AgentFeatures(sandbox=False),
+        features=RuntimeFeatures(sandbox=False),
         extra_middleware=[filt],
     )
 
@@ -422,9 +422,9 @@ def test_extra_unanchored_before_clarification(mock_create_agent):
         pass
 
     plain = MyPlain()
-    create_deep_agent(
+    create_deerflow_agent(
         _make_mock_model(),
-        features=AgentFeatures(sandbox=False),
+        features=RuntimeFeatures(sandbox=False),
         extra_middleware=[plain],
     )
 
@@ -452,9 +452,9 @@ def test_extra_conflict_same_next_target():
         pass
 
     with pytest.raises(ValueError, match="Conflict"):
-        create_deep_agent(
+        create_deerflow_agent(
             _make_mock_model(),
-            features=AgentFeatures(sandbox=False),
+            features=RuntimeFeatures(sandbox=False),
             extra_middleware=[MW1(), MW2()],
         )
 
@@ -476,9 +476,9 @@ def test_extra_conflict_same_prev_target():
         pass
 
     with pytest.raises(ValueError, match="Conflict"):
-        create_deep_agent(
+        create_deerflow_agent(
             _make_mock_model(),
-            features=AgentFeatures(sandbox=False),
+            features=RuntimeFeatures(sandbox=False),
             extra_middleware=[MW1(), MW2()],
         )
 
@@ -499,9 +499,9 @@ def test_extra_both_next_and_prev_error():
     MW._prev_anchor = ClarificationMiddleware
 
     with pytest.raises(ValueError, match="both @Next and @Prev"):
-        create_deep_agent(
+        create_deerflow_agent(
             _make_mock_model(),
-            features=AgentFeatures(sandbox=False),
+            features=RuntimeFeatures(sandbox=False),
             extra_middleware=[MW()],
         )
 
@@ -525,9 +525,9 @@ def test_extra_cross_external_anchoring(mock_create_agent):
     class Second(AgentMiddleware):
         pass
 
-    create_deep_agent(
+    create_deerflow_agent(
         _make_mock_model(),
-        features=AgentFeatures(sandbox=False),
+        features=RuntimeFeatures(sandbox=False),
         extra_middleware=[Second(), First()],  # intentionally reversed
     )
 
@@ -555,9 +555,9 @@ def test_extra_unresolvable_anchor():
         pass
 
     with pytest.raises(ValueError, match="Cannot resolve"):
-        create_deep_agent(
+        create_deerflow_agent(
             _make_mock_model(),
-            features=AgentFeatures(sandbox=False),
+            features=RuntimeFeatures(sandbox=False),
             extra_middleware=[MW()],
         )
 
@@ -567,7 +567,7 @@ def test_extra_unresolvable_anchor():
 # ---------------------------------------------------------------------------
 def test_extra_with_middleware_takeover_conflict():
     with pytest.raises(ValueError, match="full takeover"):
-        create_deep_agent(
+        create_deerflow_agent(
             _make_mock_model(),
             middleware=[MagicMock()],
             extra_middleware=[MagicMock()],
@@ -585,7 +585,7 @@ def test_extra_with_middleware_takeover_conflict():
 @patch("deerflow.agents.factory.create_agent")
 def test_loop_detection_always_present(mock_create_agent):
     mock_create_agent.return_value = MagicMock()
-    create_deep_agent(_make_mock_model(), features=AgentFeatures(sandbox=False))
+    create_deerflow_agent(_make_mock_model(), features=RuntimeFeatures(sandbox=False))
 
     call_kwargs = mock_create_agent.call_args[1]
     mw_types = [type(m).__name__ for m in call_kwargs["middleware"]]
@@ -598,7 +598,7 @@ def test_loop_detection_always_present(mock_create_agent):
 @patch("deerflow.agents.factory.create_agent")
 def test_loop_detection_before_clarification(mock_create_agent):
     mock_create_agent.return_value = MagicMock()
-    create_deep_agent(_make_mock_model(), features=AgentFeatures(sandbox=False))
+    create_deerflow_agent(_make_mock_model(), features=RuntimeFeatures(sandbox=False))
 
     call_kwargs = mock_create_agent.call_args[1]
     mw_types = [type(m).__name__ for m in call_kwargs["middleware"]]
@@ -614,7 +614,7 @@ def test_loop_detection_before_clarification(mock_create_agent):
 @patch("deerflow.agents.factory.create_agent")
 def test_plan_mode_adds_todo_middleware(mock_create_agent):
     mock_create_agent.return_value = MagicMock()
-    create_deep_agent(_make_mock_model(), features=AgentFeatures(sandbox=False), plan_mode=True)
+    create_deerflow_agent(_make_mock_model(), features=RuntimeFeatures(sandbox=False), plan_mode=True)
 
     call_kwargs = mock_create_agent.call_args[1]
     mw_types = [type(m).__name__ for m in call_kwargs["middleware"]]
@@ -627,7 +627,7 @@ def test_plan_mode_adds_todo_middleware(mock_create_agent):
 @patch("deerflow.agents.factory.create_agent")
 def test_plan_mode_default_no_todo(mock_create_agent):
     mock_create_agent.return_value = MagicMock()
-    create_deep_agent(_make_mock_model(), features=AgentFeatures(sandbox=False))
+    create_deerflow_agent(_make_mock_model(), features=RuntimeFeatures(sandbox=False))
 
     call_kwargs = mock_create_agent.call_args[1]
     mw_types = [type(m).__name__ for m in call_kwargs["middleware"]]
@@ -639,9 +639,9 @@ def test_plan_mode_default_no_todo(mock_create_agent):
 # ---------------------------------------------------------------------------
 def test_summarization_true_raises():
     with pytest.raises(ValueError, match="requires a custom AgentMiddleware"):
-        create_deep_agent(
+        create_deerflow_agent(
             _make_mock_model(),
-            features=AgentFeatures(sandbox=False, summarization=True),
+            features=RuntimeFeatures(sandbox=False, summarization=True),
         )
 
 
@@ -650,9 +650,9 @@ def test_summarization_true_raises():
 # ---------------------------------------------------------------------------
 def test_guardrail_true_raises():
     with pytest.raises(ValueError, match="requires a custom AgentMiddleware"):
-        create_deep_agent(
+        create_deerflow_agent(
             _make_mock_model(),
-            features=AgentFeatures(sandbox=False, guardrail=True),
+            features=RuntimeFeatures(sandbox=False, guardrail=True),
         )
 
 
@@ -669,9 +669,9 @@ def test_guardrail_custom_middleware(mock_create_agent):
         pass
 
     custom = MyGuardrail()
-    create_deep_agent(
+    create_deerflow_agent(
         _make_mock_model(),
-        features=AgentFeatures(sandbox=False, guardrail=custom),
+        features=RuntimeFeatures(sandbox=False, guardrail=custom),
     )
 
     call_kwargs = mock_create_agent.call_args[1]
@@ -687,7 +687,7 @@ def test_guardrail_custom_middleware(mock_create_agent):
 @patch("deerflow.agents.factory.create_agent")
 def test_guardrail_default_off(mock_create_agent):
     mock_create_agent.return_value = MagicMock()
-    create_deep_agent(_make_mock_model(), features=AgentFeatures(sandbox=False))
+    create_deerflow_agent(_make_mock_model(), features=RuntimeFeatures(sandbox=False))
 
     call_kwargs = mock_create_agent.call_args[1]
     mw_types = [type(m).__name__ for m in call_kwargs["middleware"]]
@@ -709,11 +709,11 @@ def test_full_chain_order(mock_create_agent):
     class MySummarization(AM):
         pass
 
-    feat = AgentFeatures(
+    feat = RuntimeFeatures(
         sandbox=True, memory=True, summarization=MySummarization(), subagent=True,
         vision=True, auto_title=True, guardrail=MyGuardrail(),
     )
-    create_deep_agent(_make_mock_model(), features=feat, plan_mode=True)
+    create_deerflow_agent(_make_mock_model(), features=feat, plan_mode=True)
 
     call_kwargs = mock_create_agent.call_args[1]
     mw_types = [type(m).__name__ for m in call_kwargs["middleware"]]
@@ -735,3 +735,32 @@ def test_full_chain_order(mock_create_agent):
         "ClarificationMiddleware",
     ]
     assert mw_types == expected_order
+
+
+# ---------------------------------------------------------------------------
+# 37. @Next(ClarificationMiddleware) does not break tail invariant
+# ---------------------------------------------------------------------------
+@patch("deerflow.agents.factory.create_agent")
+def test_next_clarification_preserves_tail_invariant(mock_create_agent):
+    """Even with @Next(ClarificationMiddleware), Clarification stays last."""
+    from langchain.agents.middleware import AgentMiddleware
+
+    from deerflow.agents.middlewares.clarification_middleware import ClarificationMiddleware
+
+    mock_create_agent.return_value = MagicMock()
+
+    @Next(ClarificationMiddleware)
+    class AfterClar(AgentMiddleware):
+        pass
+
+    create_deerflow_agent(
+        _make_mock_model(),
+        features=RuntimeFeatures(sandbox=False),
+        extra_middleware=[AfterClar()],
+    )
+
+    call_kwargs = mock_create_agent.call_args[1]
+    middleware = call_kwargs["middleware"]
+    mw_types = [type(m).__name__ for m in middleware]
+    assert mw_types[-1] == "ClarificationMiddleware"
+    assert "AfterClar" in mw_types
