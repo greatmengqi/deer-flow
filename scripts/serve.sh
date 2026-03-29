@@ -37,7 +37,7 @@ fi
 
 echo "Stopping existing services if any..."
 pkill -f "uvicorn app.server.app:app" 2>/dev/null || true
-# gateway merged into server — no separate process to kill 2>/dev/null || true
+pkill -f "uvicorn app.gateway.app:app" 2>/dev/null || true 2>/dev/null || true
 pkill -f "next dev" 2>/dev/null || true
 pkill -f "next-server" 2>/dev/null || true
 nginx -c "$REPO_ROOT/docker/nginx/nginx.local.conf" -p "$REPO_ROOT" -s quit 2>/dev/null || true
@@ -96,7 +96,7 @@ cleanup() {
     echo ""
     echo "Shutting down services..."
     pkill -f "uvicorn app.server.app:app" 2>/dev/null || true
-    # gateway merged into server — no separate process to kill
+    pkill -f "uvicorn app.gateway.app:app" 2>/dev/null || true
     pkill -f "next dev" 2>/dev/null || true
     pkill -f "next start" 2>/dev/null || true
     pkill -f "next-server" 2>/dev/null || true
@@ -126,22 +126,33 @@ else
     GATEWAY_EXTRA_FLAGS=""
 fi
 
-echo "Starting LangGraph-compatible server..."
+STANDALONE="${DEERFLOW_STANDALONE:-false}"
+
+echo "Starting DeerFlow server (standalone=$STANDALONE)..."
 CONFIG_LOG_LEVEL=$(grep -m1 '^log_level:' config.yaml 2>/dev/null | awk '{print $2}' | tr -d ' ')
 SERVER_LOG_LEVEL="${LANGGRAPH_LOG_LEVEL:-${CONFIG_LOG_LEVEL:-info}}"
-(cd backend && PYTHONPATH=. uv run uvicorn app.server.app:app --host 0.0.0.0 --port 2024 --log-level "$SERVER_LOG_LEVEL" $GATEWAY_EXTRA_FLAGS > ../logs/langgraph.log 2>&1) &
-./scripts/wait-for-port.sh 2024 60 "LangGraph-compatible server" || {
-    echo "  See logs/langgraph.log for details"
-    tail -20 logs/langgraph.log
-    if grep -qE "config_version|outdated|Environment variable .* not found|KeyError|ValidationError|config\.yaml" logs/langgraph.log 2>/dev/null; then
+(cd backend && DEERFLOW_STANDALONE=$STANDALONE PYTHONPATH=. uv run uvicorn app.server.app:app --host 0.0.0.0 --port 2024 --log-level "$SERVER_LOG_LEVEL" $GATEWAY_EXTRA_FLAGS > ../logs/server.log 2>&1) &
+./scripts/wait-for-port.sh 2024 60 "DeerFlow server" || {
+    echo "  See logs/server.log for details"
+    tail -20 logs/server.log
+    if grep -qE "config_version|outdated|Environment variable .* not found|KeyError|ValidationError|config\.yaml" logs/server.log 2>/dev/null; then
         echo ""
         echo "  Hint: This may be a configuration issue. Try running 'make config-upgrade' to update your config.yaml."
     fi
     cleanup
 }
-echo "✓ LangGraph-compatible server started on localhost:2024"
+echo "✓ DeerFlow server started on localhost:2024"
 
-# Gateway routes are merged into the server above — no separate process needed.
+if [ "$STANDALONE" != "true" ] && [ "$STANDALONE" != "1" ]; then
+    echo "Starting Gateway API..."
+    (cd backend && PYTHONPATH=. uv run uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 $GATEWAY_EXTRA_FLAGS > ../logs/gateway.log 2>&1) &
+    ./scripts/wait-for-port.sh 8001 30 "Gateway API" || {
+        echo "✗ Gateway API failed to start. Last log output:"
+        tail -60 logs/gateway.log
+        cleanup
+    }
+    echo "✓ Gateway API started on localhost:8001"
+fi
 
 echo "Starting Frontend..."
 (cd frontend && $FRONTEND_CMD > ../logs/frontend.log 2>&1) &
@@ -153,7 +164,12 @@ echo "Starting Frontend..."
 echo "✓ Frontend started on localhost:3000"
 
 echo "Starting Nginx reverse proxy..."
-nginx -g 'daemon off;' -c "$REPO_ROOT/docker/nginx/nginx.local.conf" -p "$REPO_ROOT" > logs/nginx.log 2>&1 &
+if [ "$STANDALONE" = "true" ] || [ "$STANDALONE" = "1" ]; then
+    NGINX_CONF="$REPO_ROOT/docker/nginx/nginx.standalone.conf"
+else
+    NGINX_CONF="$REPO_ROOT/docker/nginx/nginx.split.conf"
+fi
+nginx -g 'daemon off;' -c "$NGINX_CONF" -p "$REPO_ROOT" > logs/nginx.log 2>&1 &
 NGINX_PID=$!
 ./scripts/wait-for-port.sh 2026 10 "Nginx" || {
     echo "  See logs/nginx.log for details"

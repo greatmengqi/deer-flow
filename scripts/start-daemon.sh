@@ -16,7 +16,7 @@ cd "$REPO_ROOT"
 
 echo "Stopping existing services if any..."
 pkill -f "uvicorn app.server.app:app" 2>/dev/null || true
-# gateway merged into server — no separate process to kill 2>/dev/null || true
+pkill -f "uvicorn app.gateway.app:app" 2>/dev/null || true 2>/dev/null || true
 pkill -f "next dev" 2>/dev/null || true
 nginx -c "$REPO_ROOT/docker/nginx/nginx.local.conf" -p "$REPO_ROOT" -s quit 2>/dev/null || true
 sleep 1
@@ -58,7 +58,7 @@ fi
 cleanup_on_failure() {
     echo "Failed to start services, cleaning up..."
     pkill -f "uvicorn app.server.app:app" 2>/dev/null || true
-    # gateway merged into server — no separate process to kill 2>/dev/null || true
+    pkill -f "uvicorn app.gateway.app:app" 2>/dev/null || true 2>/dev/null || true
     pkill -f "next dev" 2>/dev/null || true
     nginx -c "$REPO_ROOT/docker/nginx/nginx.local.conf" -p "$REPO_ROOT" -s quit 2>/dev/null || true
     sleep 1
