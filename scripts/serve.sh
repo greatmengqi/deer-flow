@@ -36,7 +36,7 @@ fi
 # ── Stop existing services ────────────────────────────────────────────────────
 
 echo "Stopping existing services if any..."
-pkill -f "uvicorn app.server.app:app" 2>/dev/null || true
+pkill -f "uvicorn app.gateway.app:app" 2>/dev/null || true
 pkill -f "uvicorn app.gateway.app:app" 2>/dev/null || true
 pkill -f "next dev" 2>/dev/null || true
 pkill -f "next-server" 2>/dev/null || true
@@ -95,7 +95,7 @@ cleanup() {
     trap - INT TERM
     echo ""
     echo "Shutting down services..."
-    pkill -f "uvicorn app.server.app:app" 2>/dev/null || true
+    pkill -f "uvicorn app.gateway.app:app" 2>/dev/null || true
     pkill -f "uvicorn app.gateway.app:app" 2>/dev/null || true
     pkill -f "next dev" 2>/dev/null || true
     pkill -f "next start" 2>/dev/null || true
@@ -131,7 +131,7 @@ NATIVE_RUNTIME="${DEERFLOW_NATIVE_RUNTIME:-true}"
 CONFIG_LOG_LEVEL=$(grep -m1 '^log_level:' config.yaml 2>/dev/null | awk '{print $2}' | tr -d ' ')
 LOG_LEVEL="${LANGGRAPH_LOG_LEVEL:-${CONFIG_LOG_LEVEL:-info}}"
 
-if [ "$NATIVE_RUNTIME" != "true" ] && [ "$NATIVE_RUNTIME" != "1" ]; then
+if [ "$NATIVE_RUNTIME" != "true" ] && [ "$NATIVE_RUNTIME" != "1" ] && [ "$NATIVE_RUNTIME" != "yes" ]; then
     echo "Starting LangGraph server (legacy CLI)..."
     (cd backend && NO_COLOR=1 uv run langgraph dev --no-browser --allow-blocking --no-reload --server-log-level "$LOG_LEVEL" > ../logs/langgraph.log 2>&1) &
     ./scripts/wait-for-port.sh 2024 60 "LangGraph" || {
@@ -185,7 +185,7 @@ echo "  🌐 Application: http://localhost:2026"
 echo "  📡 API: http://localhost:2026/api/*"
 echo ""
 echo "  📋 Logs:"
-echo "     - Server:    logs/langgraph.log"
+echo "     - Gateway:   logs/gateway.log"
 echo "     - Frontend:  logs/frontend.log"
 echo "     - Nginx:     logs/nginx.log"
 echo ""

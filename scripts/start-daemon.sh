@@ -15,7 +15,7 @@ cd "$REPO_ROOT"
 # ── Stop existing services ────────────────────────────────────────────────────
 
 echo "Stopping existing services if any..."
-pkill -f "uvicorn app.server.app:app" 2>/dev/null || true
+pkill -f "uvicorn app.gateway.app:app" 2>/dev/null || true
 pkill -f "uvicorn app.gateway.app:app" 2>/dev/null || true
 pkill -f "next dev" 2>/dev/null || true
 nginx -c "$REPO_ROOT/docker/nginx/nginx.local.conf" -p "$REPO_ROOT" -s quit 2>/dev/null || true
@@ -57,7 +57,7 @@ fi
 
 cleanup_on_failure() {
     echo "Failed to start services, cleaning up..."
-    pkill -f "uvicorn app.server.app:app" 2>/dev/null || true
+    pkill -f "uvicorn app.gateway.app:app" 2>/dev/null || true
     pkill -f "uvicorn app.gateway.app:app" 2>/dev/null || true
     pkill -f "next dev" 2>/dev/null || true
     nginx -c "$REPO_ROOT/docker/nginx/nginx.local.conf" -p "$REPO_ROOT" -s quit 2>/dev/null || true
@@ -72,19 +72,19 @@ trap cleanup_on_failure INT TERM
 
 mkdir -p logs
 
-echo "Starting DeerFlow server..."
-nohup sh -c 'cd backend && PYTHONPATH=. uv run uvicorn app.server.app:app --host 0.0.0.0 --port 2024 > ../logs/langgraph.log 2>&1' &
-./scripts/wait-for-port.sh 2024 60 "DeerFlow server" || {
-    echo "✗ Server failed to start. Last log output:"
-    tail -60 logs/langgraph.log
-    if grep -qE "config_version|outdated|Environment variable .* not found|KeyError|ValidationError|config\.yaml" logs/langgraph.log 2>/dev/null; then
+echo "Starting Gateway API..."
+nohup sh -c 'cd backend && DEERFLOW_NATIVE_RUNTIME=true PYTHONPATH=. uv run uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 > ../logs/gateway.log 2>&1' &
+./scripts/wait-for-port.sh 8001 30 "Gateway API" || {
+    echo "✗ Gateway API failed to start. Last log output:"
+    tail -60 logs/gateway.log
+    if grep -qE "config_version|outdated|Environment variable .* not found|KeyError|ValidationError|config\.yaml" logs/gateway.log 2>/dev/null; then
         echo ""
         echo "  Hint: This may be a configuration issue. Try running 'make config-upgrade' to update your config.yaml."
     fi
     cleanup_on_failure
     exit 1
 }
-echo "✓ DeerFlow server started on localhost:2024"
+echo "✓ Gateway API started on localhost:8001"
 
 echo "Starting Frontend..."
 nohup sh -c 'cd frontend && pnpm run dev > ../logs/frontend.log 2>&1' &
