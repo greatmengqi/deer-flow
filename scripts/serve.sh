@@ -126,13 +126,13 @@ else
     GATEWAY_EXTRA_FLAGS=""
 fi
 
-# DEERFLOW_RUNTIME: "server" (new, default) or "gateway" (legacy)
-RUNTIME="${DEERFLOW_RUNTIME:-server}"
+# DEERFLOW_NATIVE_RUNTIME: when true, gateway serves LangGraph API directly (no langgraph-cli)
+NATIVE_RUNTIME="${DEERFLOW_NATIVE_RUNTIME:-true}"
 CONFIG_LOG_LEVEL=$(grep -m1 '^log_level:' config.yaml 2>/dev/null | awk '{print $2}' | tr -d ' ')
 LOG_LEVEL="${LANGGRAPH_LOG_LEVEL:-${CONFIG_LOG_LEVEL:-info}}"
 
-if [ "$RUNTIME" = "gateway" ]; then
-    echo "Starting LangGraph server (legacy)..."
+if [ "$NATIVE_RUNTIME" != "true" ] && [ "$NATIVE_RUNTIME" != "1" ]; then
+    echo "Starting LangGraph server (legacy CLI)..."
     (cd backend && NO_COLOR=1 uv run langgraph dev --no-browser --allow-blocking --no-reload --server-log-level "$LOG_LEVEL" > ../logs/langgraph.log 2>&1) &
     ./scripts/wait-for-port.sh 2024 60 "LangGraph" || {
         echo "  See logs/langgraph.log for details"
@@ -140,29 +140,16 @@ if [ "$RUNTIME" = "gateway" ]; then
         cleanup
     }
     echo "✓ LangGraph server started on localhost:2024"
-
-    echo "Starting Gateway API..."
-    (cd backend && PYTHONPATH=. uv run uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 $GATEWAY_EXTRA_FLAGS > ../logs/gateway.log 2>&1) &
-    ./scripts/wait-for-port.sh 8001 30 "Gateway API" || {
-        echo "✗ Gateway API failed to start."
-        tail -20 logs/gateway.log
-        cleanup
-    }
-    echo "✓ Gateway API started on localhost:8001"
-else
-    echo "Starting DeerFlow server..."
-    (cd backend && PYTHONPATH=. uv run uvicorn app.server.app:app --host 0.0.0.0 --port 2024 --log-level "$LOG_LEVEL" $GATEWAY_EXTRA_FLAGS > ../logs/server.log 2>&1) &
-    ./scripts/wait-for-port.sh 2024 60 "DeerFlow server" || {
-        echo "  See logs/server.log for details"
-        tail -20 logs/server.log
-        if grep -qE "config_version|outdated|Environment variable .* not found|KeyError|ValidationError|config\.yaml" logs/server.log 2>/dev/null; then
-            echo ""
-            echo "  Hint: This may be a configuration issue. Try running 'make config-upgrade' to update your config.yaml."
-        fi
-        cleanup
-    }
-    echo "✓ DeerFlow server started on localhost:2024"
 fi
+
+echo "Starting Gateway API (native_runtime=$NATIVE_RUNTIME)..."
+(cd backend && DEERFLOW_NATIVE_RUNTIME=$NATIVE_RUNTIME PYTHONPATH=. uv run uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 $GATEWAY_EXTRA_FLAGS > ../logs/gateway.log 2>&1) &
+./scripts/wait-for-port.sh 8001 30 "Gateway API" || {
+    echo "✗ Gateway API failed to start."
+    tail -20 logs/gateway.log
+    cleanup
+}
+echo "✓ Gateway API started on localhost:8001"
 
 echo "Starting Frontend..."
 (cd frontend && $FRONTEND_CMD > ../logs/frontend.log 2>&1) &
@@ -174,10 +161,10 @@ echo "Starting Frontend..."
 echo "✓ Frontend started on localhost:3000"
 
 echo "Starting Nginx reverse proxy..."
-if [ "$RUNTIME" = "gateway" ]; then
-    NGINX_CONF="$REPO_ROOT/docker/nginx/nginx.split.conf"
-else
+if [ "$NATIVE_RUNTIME" = "true" ] || [ "$NATIVE_RUNTIME" = "1" ]; then
     NGINX_CONF="$REPO_ROOT/docker/nginx/nginx.standalone.conf"
+else
+    NGINX_CONF="$REPO_ROOT/docker/nginx/nginx.split.conf"
 fi
 nginx -g 'daemon off;' -c "$NGINX_CONF" -p "$REPO_ROOT" > logs/nginx.log 2>&1 &
 NGINX_PID=$!

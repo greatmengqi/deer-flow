@@ -1,4 +1,5 @@
 import logging
+import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -18,6 +19,10 @@ from app.gateway.routers import (
     uploads,
 )
 from deerflow.config.app_config import get_app_config
+
+# Feature flag: when true, gateway also serves LangGraph Platform API
+# (threads, runs/stream, assistants), replacing langgraph-cli.
+_NATIVE_RUNTIME = os.getenv("DEERFLOW_NATIVE_RUNTIME", "").lower() in ("1", "true", "yes")
 
 # Configure logging
 logging.basicConfig(
@@ -44,10 +49,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     config = get_gateway_config()
     logger.info(f"Starting API Gateway on {config.host}:{config.port}")
 
-    # NOTE: MCP tools initialization is NOT done here because:
-    # 1. Gateway doesn't use MCP tools - they are used by Agents in the LangGraph Server
-    # 2. Gateway and LangGraph Server are separate processes with independent caches
-    # MCP tools are lazily initialized in LangGraph Server when first needed
+    # Init DeerFlowClient when native runtime is enabled
+    if _NATIVE_RUNTIME:
+        from app.server import deps
+        from deerflow.agents.checkpointer import get_checkpointer
+        from deerflow.client import DeerFlowClient
+
+        deps.client = DeerFlowClient(checkpointer=get_checkpointer())
+        logger.info("Native runtime enabled — LangGraph API served by gateway")
 
     # Start IM channel service if any channels are configured
     try:
@@ -183,6 +192,16 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
 
     # Channels API is mounted at /api/channels
     app.include_router(channels.router)
+
+    # LangGraph Platform API (native runtime, replaces langgraph-cli)
+    if _NATIVE_RUNTIME:
+        from app.server.routers import assistants as srv_assistants
+        from app.server.routers import runs as srv_runs
+        from app.server.routers import threads as srv_threads
+
+        app.include_router(srv_threads.router)
+        app.include_router(srv_runs.router)
+        app.include_router(srv_assistants.router)
 
     @app.get("/health", tags=["health"])
     async def health_check() -> dict:
