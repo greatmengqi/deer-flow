@@ -117,8 +117,8 @@ dev-daemon:
 # Stop all services
 stop:
 	@echo "Stopping all services..."
-	@-pkill -f "langgraph dev" 2>/dev/null || true
-	@-pkill -f "uvicorn app.gateway.app:app" 2>/dev/null || true
+	@-pkill -f "uvicorn app.server.app:app" 2>/dev/null || true
+	# gateway merged into server — no separate process to kill
 	@-pkill -f "next dev" 2>/dev/null || true
 	@-pkill -f "next start" 2>/dev/null || true
 	@-pkill -f "next-server" 2>/dev/null || true

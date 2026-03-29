@@ -36,8 +36,8 @@ fi
 # ── Stop existing services ────────────────────────────────────────────────────
 
 echo "Stopping existing services if any..."
-pkill -f "langgraph dev" 2>/dev/null || true
-pkill -f "uvicorn app.gateway.app:app" 2>/dev/null || true
+pkill -f "uvicorn app.server.app:app" 2>/dev/null || true
+# gateway merged into server — no separate process to kill 2>/dev/null || true
 pkill -f "next dev" 2>/dev/null || true
 pkill -f "next-server" 2>/dev/null || true
 nginx -c "$REPO_ROOT/docker/nginx/nginx.local.conf" -p "$REPO_ROOT" -s quit 2>/dev/null || true
@@ -63,7 +63,7 @@ else
 fi
 echo ""
 echo "Services starting up..."
-echo "  → Backend: LangGraph + Gateway"
+echo "  → Backend: Agent Server + Gateway"
 echo "  → Frontend: Next.js"
 echo "  → Nginx: Reverse Proxy"
 echo ""
@@ -95,8 +95,8 @@ cleanup() {
     trap - INT TERM
     echo ""
     echo "Shutting down services..."
-    pkill -f "langgraph dev" 2>/dev/null || true
-    pkill -f "uvicorn app.gateway.app:app" 2>/dev/null || true
+    pkill -f "uvicorn app.server.app:app" 2>/dev/null || true
+    # gateway merged into server — no separate process to kill
     pkill -f "next dev" 2>/dev/null || true
     pkill -f "next start" 2>/dev/null || true
     pkill -f "next-server" 2>/dev/null || true
@@ -121,19 +121,16 @@ trap cleanup INT TERM
 mkdir -p logs
 
 if $DEV_MODE; then
-    LANGGRAPH_EXTRA_FLAGS="--no-reload"
     GATEWAY_EXTRA_FLAGS="--reload --reload-include='*.yaml' --reload-include='.env'"
 else
-    LANGGRAPH_EXTRA_FLAGS="--no-reload"
     GATEWAY_EXTRA_FLAGS=""
 fi
 
-echo "Starting LangGraph server..."
-# Read log_level from config.yaml, fallback to env var, then to "info"
+echo "Starting LangGraph-compatible server..."
 CONFIG_LOG_LEVEL=$(grep -m1 '^log_level:' config.yaml 2>/dev/null | awk '{print $2}' | tr -d ' ')
-LANGGRAPH_LOG_LEVEL="${LANGGRAPH_LOG_LEVEL:-${CONFIG_LOG_LEVEL:-info}}"
-(cd backend && NO_COLOR=1 uv run langgraph dev --no-browser --allow-blocking --server-log-level $LANGGRAPH_LOG_LEVEL $LANGGRAPH_EXTRA_FLAGS > ../logs/langgraph.log 2>&1) &
-./scripts/wait-for-port.sh 2024 60 "LangGraph" || {
+SERVER_LOG_LEVEL="${LANGGRAPH_LOG_LEVEL:-${CONFIG_LOG_LEVEL:-info}}"
+(cd backend && PYTHONPATH=. uv run uvicorn app.server.app:app --host 0.0.0.0 --port 2024 --log-level "$SERVER_LOG_LEVEL" $GATEWAY_EXTRA_FLAGS > ../logs/langgraph.log 2>&1) &
+./scripts/wait-for-port.sh 2024 60 "LangGraph-compatible server" || {
     echo "  See logs/langgraph.log for details"
     tail -20 logs/langgraph.log
     if grep -qE "config_version|outdated|Environment variable .* not found|KeyError|ValidationError|config\.yaml" logs/langgraph.log 2>/dev/null; then
@@ -142,21 +139,9 @@ LANGGRAPH_LOG_LEVEL="${LANGGRAPH_LOG_LEVEL:-${CONFIG_LOG_LEVEL:-info}}"
     fi
     cleanup
 }
-echo "✓ LangGraph server started on localhost:2024"
+echo "✓ LangGraph-compatible server started on localhost:2024"
 
-echo "Starting Gateway API..."
-(cd backend && PYTHONPATH=. uv run uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 $GATEWAY_EXTRA_FLAGS > ../logs/gateway.log 2>&1) &
-./scripts/wait-for-port.sh 8001 30 "Gateway API" || {
-    echo "✗ Gateway API failed to start. Last log output:"
-    tail -60 logs/gateway.log
-    echo ""
-    echo "Likely configuration errors:"
-    grep -E "Failed to load configuration|Environment variable .* not found|config\.yaml.*not found" logs/gateway.log | tail -5 || true
-    echo ""
-    echo "  Hint: Try running 'make config-upgrade' to update your config.yaml with the latest fields."
-    cleanup
-}
-echo "✓ Gateway API started on localhost:8001"
+# Gateway routes are merged into the server above — no separate process needed.
 
 echo "Starting Frontend..."
 (cd frontend && $FRONTEND_CMD > ../logs/frontend.log 2>&1) &
@@ -189,12 +174,10 @@ fi
 echo "=========================================="
 echo ""
 echo "  🌐 Application: http://localhost:2026"
-echo "  📡 API Gateway: http://localhost:2026/api/*"
-echo "  🤖 LangGraph:   http://localhost:2026/api/langgraph/*"
+echo "  📡 API: http://localhost:2026/api/*"
 echo ""
 echo "  📋 Logs:"
-echo "     - LangGraph: logs/langgraph.log"
-echo "     - Gateway:   logs/gateway.log"
+echo "     - Server:    logs/langgraph.log"
 echo "     - Frontend:  logs/frontend.log"
 echo "     - Nginx:     logs/nginx.log"
 echo ""
