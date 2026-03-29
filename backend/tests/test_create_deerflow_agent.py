@@ -764,3 +764,27 @@ def test_next_clarification_preserves_tail_invariant(mock_create_agent):
     mw_types = [type(m).__name__ for m in middleware]
     assert mw_types[-1] == "ClarificationMiddleware"
     assert "AfterClar" in mw_types
+
+
+# ---------------------------------------------------------------------------
+# 38. @Next(X) + @Prev(X) on same anchor from different extras → ValueError
+# ---------------------------------------------------------------------------
+def test_extra_opposite_direction_same_anchor_conflict():
+    from langchain.agents.middleware import AgentMiddleware
+
+    from deerflow.agents.middlewares.dangling_tool_call_middleware import DanglingToolCallMiddleware
+
+    @Next(DanglingToolCallMiddleware)
+    class AfterDangling(AgentMiddleware):
+        pass
+
+    @Prev(DanglingToolCallMiddleware)
+    class BeforeDangling(AgentMiddleware):
+        pass
+
+    with pytest.raises(ValueError, match="cross-anchoring"):
+        create_deerflow_agent(
+            _make_mock_model(),
+            features=RuntimeFeatures(sandbox=False),
+            extra_middleware=[AfterDangling(), BeforeDangling()],
+        )

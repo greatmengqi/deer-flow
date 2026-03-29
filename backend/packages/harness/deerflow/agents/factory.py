@@ -297,7 +297,7 @@ def _insert_extra(chain: list[AgentMiddleware], extras: list[AgentMiddleware]) -
 
     Algorithm:
       1. Validate: no middleware has both @Next and @Prev.
-      2. Conflict detection: two extras with same direction + same anchor → error.
+      2. Conflict detection: two extras targeting same anchor (same or opposite direction) → error.
       3. Insert unanchored extras before ClarificationMiddleware.
       4. Insert anchored extras iteratively (supports cross-external anchoring).
       5. If an anchor cannot be resolved after all rounds → error.
@@ -321,6 +321,12 @@ def _insert_extra(chain: list[AgentMiddleware], extras: list[AgentMiddleware]) -
                     f"Conflict: {type(mw).__name__} and {next_targets[next_anchor].__name__} "
                     f"both @Next({next_anchor.__name__})"
                 )
+            if next_anchor in prev_targets:
+                raise ValueError(
+                    f"Conflict: {type(mw).__name__} @Next({next_anchor.__name__}) and "
+                    f"{prev_targets[next_anchor].__name__} @Prev({next_anchor.__name__}) "
+                    f"— use cross-anchoring between extras instead"
+                )
             next_targets[next_anchor] = type(mw)
             anchored.append((mw, "next", next_anchor))
         elif prev_anchor:
@@ -328,6 +334,12 @@ def _insert_extra(chain: list[AgentMiddleware], extras: list[AgentMiddleware]) -
                 raise ValueError(
                     f"Conflict: {type(mw).__name__} and {prev_targets[prev_anchor].__name__} "
                     f"both @Prev({prev_anchor.__name__})"
+                )
+            if prev_anchor in next_targets:
+                raise ValueError(
+                    f"Conflict: {type(mw).__name__} @Prev({prev_anchor.__name__}) and "
+                    f"{next_targets[prev_anchor].__name__} @Next({prev_anchor.__name__}) "
+                    f"— use cross-anchoring between extras instead"
                 )
             prev_targets[prev_anchor] = type(mw)
             anchored.append((mw, "prev", prev_anchor))
