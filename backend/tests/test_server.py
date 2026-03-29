@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 class TestThreadStore:
     @pytest.fixture()
     def store(self):
-        from app.server.store import ThreadStore
+        from app.gateway.store import ThreadStore
 
         return ThreadStore(max_threads=5)
 
@@ -134,9 +134,10 @@ def client():
     """Create test client with the LangGraph-compatible routes."""
     from fastapi import FastAPI
 
-    from app.server import deps
-    from app.server.routers import assistants, runs, threads
-    from app.server.store import ThreadStore
+    from app.gateway import deps
+    from app.gateway.routers import assistants, runs
+    from app.gateway.routers import runtime_threads as threads
+    from app.gateway.store import ThreadStore
 
     # Reset singletons
     deps.store = ThreadStore()
@@ -242,7 +243,7 @@ class TestRunStreamEndpoint:
             ]
         )
 
-        from app.server import deps
+        from app.gateway import deps
 
         deps.client = mock_client
 
@@ -288,7 +289,7 @@ class TestRunStreamEndpoint:
             ]
         )
 
-        from app.server import deps
+        from app.gateway import deps
 
         deps.client = mock_client
 
@@ -309,7 +310,7 @@ class TestRunStreamEndpoint:
         mock_client = MagicMock()
         mock_client.stream.return_value = iter([StreamEvent(type="end", data={})])
 
-        from app.server import deps
+        from app.gateway import deps
 
         deps.client = mock_client
 

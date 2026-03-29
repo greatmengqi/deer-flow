@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from ..deps import get_store
+from app.gateway.deps import get_store
 
 router = APIRouter(prefix="/threads")
 

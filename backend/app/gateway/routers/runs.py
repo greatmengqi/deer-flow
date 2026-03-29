@@ -15,7 +15,7 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from ..deps import get_client, get_store
+from app.gateway.deps import get_client, get_store
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

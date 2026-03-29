@@ -3,9 +3,8 @@
 Separated from app.py to avoid circular imports between app and routers.
 """
 
+from app.gateway.store import ThreadStore
 from deerflow.client import DeerFlowClient
-
-from .store import ThreadStore
 
 # Module-level singletons, initialized in app.py lifespan
 store = ThreadStore()

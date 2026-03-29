@@ -51,7 +51,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Init DeerFlowClient when native runtime is enabled
     if _NATIVE_RUNTIME:
-        from app.server import deps
+        from app.gateway import deps
         from deerflow.agents.checkpointer import get_checkpointer
         from deerflow.client import DeerFlowClient
 
@@ -195,9 +195,9 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
 
     # LangGraph Platform API (native runtime, replaces langgraph-cli)
     if _NATIVE_RUNTIME:
-        from app.server.routers import assistants as srv_assistants
-        from app.server.routers import runs as srv_runs
-        from app.server.routers import threads as srv_threads
+        from app.gateway.routers import assistants as srv_assistants
+        from app.gateway.routers import runs as srv_runs
+        from app.gateway.routers import runtime_threads as srv_threads
 
         app.include_router(srv_threads.router)
         app.include_router(srv_runs.router)
