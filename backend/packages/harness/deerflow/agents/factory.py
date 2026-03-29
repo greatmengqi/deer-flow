@@ -114,6 +114,10 @@ def create_deerflow_agent(
         raise ValueError("Cannot specify both 'middleware' and 'features'.  Use one or the other.")
     if middleware is not None and extra_middleware:
         raise ValueError("Cannot use 'extra_middleware' with 'middleware' (full takeover).")
+    if extra_middleware:
+        for mw in extra_middleware:
+            if not isinstance(mw, AgentMiddleware):
+                raise TypeError(f"extra_middleware items must be AgentMiddleware instances, got {type(mw).__name__}")
 
     effective_tools: list[BaseTool] = list(tools or [])
     effective_state = state_schema or ThreadState
@@ -346,8 +350,8 @@ def _insert_extra(chain: list[AgentMiddleware], extras: list[AgentMiddleware]) -
         else:
             unanchored.append(mw)
 
-    # Unanchored → before ClarificationMiddleware (last built-in)
-    clarification_idx = len(chain) - 1
+    # Unanchored → before ClarificationMiddleware
+    clarification_idx = next(i for i, m in enumerate(chain) if isinstance(m, ClarificationMiddleware))
     for mw in unanchored:
         chain.insert(clarification_idx, mw)
         clarification_idx += 1
@@ -373,9 +377,16 @@ def _insert_extra(chain: list[AgentMiddleware], extras: list[AgentMiddleware]) -
                 chain.insert(idx, mw)
         if len(remaining) == len(pending):
             names = [type(m).__name__ for m, _, _ in remaining]
-            anchors = [a.__name__ for _, _, a in remaining]
+            anchor_types = {a for _, _, a in remaining}
+            remaining_types = {type(m) for m, _, _ in remaining}
+            circular = anchor_types & remaining_types
+            if circular:
+                raise ValueError(
+                    f"Circular dependency among extra middlewares: "
+                    f"{', '.join(t.__name__ for t in circular)}"
+                )
             raise ValueError(
                 f"Cannot resolve positions for {', '.join(names)} "
-                f"— anchors {', '.join(anchors)} not found in chain"
+                f"— anchors {', '.join(a.__name__ for _, _, a in remaining)} not found in chain"
             )
         pending = remaining

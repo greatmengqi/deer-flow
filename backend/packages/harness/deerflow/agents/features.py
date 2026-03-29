@@ -40,6 +40,8 @@ class RuntimeFeatures:
 
 def Next(anchor: type[AgentMiddleware]):
     """Declare this middleware should be placed after *anchor* in the chain."""
+    if not (isinstance(anchor, type) and issubclass(anchor, AgentMiddleware)):
+        raise TypeError(f"@Next expects an AgentMiddleware subclass, got {anchor!r}")
 
     def decorator(cls: type[AgentMiddleware]) -> type[AgentMiddleware]:
         cls._next_anchor = anchor  # type: ignore[attr-defined]
@@ -50,6 +52,8 @@ def Next(anchor: type[AgentMiddleware]):
 
 def Prev(anchor: type[AgentMiddleware]):
     """Declare this middleware should be placed before *anchor* in the chain."""
+    if not (isinstance(anchor, type) and issubclass(anchor, AgentMiddleware)):
+        raise TypeError(f"@Prev expects an AgentMiddleware subclass, got {anchor!r}")
 
     def decorator(cls: type[AgentMiddleware]) -> type[AgentMiddleware]:
         cls._prev_anchor = anchor  # type: ignore[attr-defined]
