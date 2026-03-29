@@ -16,6 +16,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.gateway.deps import get_client, get_store
+from deerflow.client import DeerFlowClient
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -61,19 +62,8 @@ def _extract_text(input_data: dict[str, Any]) -> str:
     messages = input_data.get("messages", [])
     if not messages:
         return ""
-    last = messages[-1]
-    content = last.get("content", "")
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for block in content:
-            if isinstance(block, str):
-                parts.append(block)
-            elif isinstance(block, dict) and block.get("type") == "text":
-                parts.append(block.get("text", ""))
-        return "\n".join(parts)
-    return str(content)
+    content = messages[-1].get("content", "")
+    return DeerFlowClient._extract_text(content)
 
 
 def _build_overrides(req: RunStreamRequest) -> dict[str, Any]:

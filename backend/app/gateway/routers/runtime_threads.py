@@ -41,9 +41,6 @@ class UpdateStateRequest(BaseModel):
 
 class GetHistoryRequest(BaseModel):
     limit: int = 10
-    before: str | None = None
-    metadata: dict[str, Any] | None = None
-    checkpoint: dict[str, Any] | None = None
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
