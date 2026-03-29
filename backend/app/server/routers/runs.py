@@ -139,13 +139,17 @@ async def stream_run(thread_id: str, request: RunStreamRequest):
         last_values: dict[str, Any] | None = None
         prev_title: str | None = None
 
+        # Emit metadata event (SDK uses this for run bootstrap)
+        yield _sse("metadata", {"run_id": run_id, "thread_id": thread_id})
+
         try:
             while True:
                 item = await queue.get()
                 if item is None:
                     break
                 if isinstance(item, Exception):
-                    yield _sse("error", {"message": str(item), "code": "INTERNAL_ERROR"})
+                    logger.exception("Stream error for thread %s", thread_id)
+                    yield _sse("error", {"message": "Internal server error", "code": "INTERNAL_ERROR"})
                     yield _sse("end", None)
                     break
 
@@ -160,9 +164,9 @@ async def stream_run(thread_id: str, request: RunStreamRequest):
                     last_values = ev.data
                     yield _sse("values", ev.data)
 
-                    # Emit updates event when title changes
+                    # Emit updates event when title changes (including clear)
                     title = ev.data.get("title")
-                    if title and title != prev_title and "updates" in modes:
+                    if title != prev_title and "updates" in modes:
                         yield _sse("updates", {"agent": {"title": title}})
                         prev_title = title
 

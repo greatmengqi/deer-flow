@@ -22,9 +22,9 @@ class ThreadRecord:
             "thread_id": self.thread_id,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
-            "metadata": self.metadata,
+            "metadata": dict(self.metadata),
             "status": self.status,
-            "values": self.values,
+            "values": dict(self.values),
         }
         if select:
             # thread_id is always included
