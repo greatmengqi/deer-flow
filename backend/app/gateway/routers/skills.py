@@ -1,11 +1,14 @@
+import json
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.gateway.path_utils import resolve_thread_virtual_path
-from app.server.deps import get_client
-from deerflow.skills.installer import SkillAlreadyExistsError
+from deerflow.config.extensions_config import ExtensionsConfig, SkillStateConfig, get_extensions_config, reload_extensions_config
+from deerflow.skills import Skill, load_skills
+from deerflow.skills.installer import SkillAlreadyExistsError, install_skill_from_archive
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +52,17 @@ class SkillInstallResponse(BaseModel):
     message: str = Field(..., description="Installation result message")
 
 
+def _skill_to_response(skill: Skill) -> SkillResponse:
+    """Convert a Skill object to a SkillResponse."""
+    return SkillResponse(
+        name=skill.name,
+        description=skill.description,
+        license=skill.license,
+        category=skill.category,
+        enabled=skill.enabled,
+    )
+
+
 @router.get(
     "/skills",
     response_model=SkillsListResponse,
@@ -57,7 +71,8 @@ class SkillInstallResponse(BaseModel):
 )
 async def list_skills() -> SkillsListResponse:
     try:
-        return SkillsListResponse(**get_client().list_skills())
+        skills = load_skills(enabled_only=False)
+        return SkillsListResponse(skills=[_skill_to_response(skill) for skill in skills])
     except Exception as e:
         logger.error(f"Failed to load skills: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to load skills: {str(e)}")
@@ -71,10 +86,13 @@ async def list_skills() -> SkillsListResponse:
 )
 async def get_skill(skill_name: str) -> SkillResponse:
     try:
-        result = get_client().get_skill(skill_name)
-        if result is None:
+        skills = load_skills(enabled_only=False)
+        skill = next((s for s in skills if s.name == skill_name), None)
+
+        if skill is None:
             raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found")
-        return SkillResponse(**result)
+
+        return _skill_to_response(skill)
     except HTTPException:
         raise
     except Exception as e:
@@ -90,10 +108,40 @@ async def get_skill(skill_name: str) -> SkillResponse:
 )
 async def update_skill(skill_name: str, request: SkillUpdateRequest) -> SkillResponse:
     try:
-        result = get_client().update_skill(skill_name, enabled=request.enabled)
-        return SkillResponse(**result)
-    except ValueError:
-        raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found")
+        skills = load_skills(enabled_only=False)
+        skill = next((s for s in skills if s.name == skill_name), None)
+
+        if skill is None:
+            raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found")
+
+        config_path = ExtensionsConfig.resolve_config_path()
+        if config_path is None:
+            config_path = Path.cwd().parent / "extensions_config.json"
+            logger.info(f"No existing extensions config found. Creating new config at: {config_path}")
+
+        extensions_config = get_extensions_config()
+        extensions_config.skills[skill_name] = SkillStateConfig(enabled=request.enabled)
+
+        config_data = {
+            "mcpServers": {name: server.model_dump() for name, server in extensions_config.mcp_servers.items()},
+            "skills": {name: {"enabled": skill_config.enabled} for name, skill_config in extensions_config.skills.items()},
+        }
+
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(config_data, f, indent=2)
+
+        logger.info(f"Skills configuration updated and saved to: {config_path}")
+        reload_extensions_config()
+
+        skills = load_skills(enabled_only=False)
+        updated_skill = next((s for s in skills if s.name == skill_name), None)
+
+        if updated_skill is None:
+            raise HTTPException(status_code=500, detail=f"Failed to reload skill '{skill_name}' after update")
+
+        logger.info(f"Skill '{skill_name}' enabled status updated to {request.enabled}")
+        return _skill_to_response(updated_skill)
+
     except HTTPException:
         raise
     except Exception as e:
@@ -110,7 +158,7 @@ async def update_skill(skill_name: str, request: SkillUpdateRequest) -> SkillRes
 async def install_skill(request: SkillInstallRequest) -> SkillInstallResponse:
     try:
         skill_file_path = resolve_thread_virtual_path(request.thread_id, request.path)
-        result = get_client().install_skill(skill_file_path)
+        result = install_skill_from_archive(skill_file_path)
         return SkillInstallResponse(**result)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
