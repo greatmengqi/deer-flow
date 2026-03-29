@@ -1,18 +1,17 @@
-"""DeerFlow unified server.
+"""DeerFlow unified server — provides all APIs in one process.
 
-Modes (controlled by DEERFLOW_STANDALONE env var):
-  - false (default): LangGraph API + server-layer REST only.
-    Gateway runs as separate process on port 8001.
-  - true: Mounts everything — no separate gateway needed.
+Replaces langgraph-cli + gateway with a single FastAPI service.
 """
 
 import logging
-import os
 from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI
 
+from app.gateway.routers import agents as gw_agents
+from app.gateway.routers import artifacts, channels, suggestions, uploads
+from app.gateway.routers import threads as gw_threads
 from deerflow.agents.checkpointer import get_checkpointer
 from deerflow.client import DeerFlowClient
 from deerflow.config.app_config import get_app_config
@@ -28,8 +27,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-_STANDALONE = os.getenv("DEERFLOW_STANDALONE", "").lower() in ("1", "true", "yes")
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,26 +39,24 @@ async def lifespan(app: FastAPI):
 
     checkpointer = get_checkpointer()
     deps.client = DeerFlowClient(checkpointer=checkpointer)
-    logger.info("DeerFlow server started (standalone=%s)", _STANDALONE)
+    logger.info("DeerFlow server started")
 
-    if _STANDALONE:
-        try:
-            from app.channels.service import start_channel_service
+    try:
+        from app.channels.service import start_channel_service
 
-            svc = await start_channel_service()
-            logger.info("Channel service started: %s", svc.get_status())
-        except Exception:
-            logger.debug("No IM channels configured or channel service failed to start")
+        svc = await start_channel_service()
+        logger.info("Channel service started: %s", svc.get_status())
+    except Exception:
+        logger.debug("No IM channels configured or channel service failed to start")
 
     yield
 
-    if _STANDALONE:
-        try:
-            from app.channels.service import stop_channel_service
+    try:
+        from app.channels.service import stop_channel_service
 
-            await stop_channel_service()
-        except Exception:
-            pass
+        await stop_channel_service()
+    except Exception:
+        pass
     logger.info("DeerFlow server stopped")
 
 
@@ -72,24 +67,19 @@ app.include_router(threads.router)
 app.include_router(runs.router)
 app.include_router(assistants.router)
 
-# ── Server-layer REST API (always mounted, delegates to DeerFlowClient) ─────
+# ── REST API (server-layer: delegates to DeerFlowClient) ────────────────────
 app.include_router(models.router)
 app.include_router(mcp.router)
 app.include_router(memory.router)
 app.include_router(skills.router)
 
-# ── Gateway-only routes (mounted only in standalone mode) ────────────────────
-if _STANDALONE:
-    from app.gateway.routers import agents as gw_agents
-    from app.gateway.routers import artifacts, channels, suggestions, uploads
-    from app.gateway.routers import threads as gw_threads
-
-    app.include_router(artifacts.router)
-    app.include_router(uploads.router)
-    app.include_router(gw_threads.router)
-    app.include_router(gw_agents.router)
-    app.include_router(suggestions.router)
-    app.include_router(channels.router)
+# ── REST API (gateway routers: no server-layer equivalent yet) ──────────────
+app.include_router(artifacts.router)
+app.include_router(uploads.router)
+app.include_router(gw_threads.router)
+app.include_router(gw_agents.router)
+app.include_router(suggestions.router)
+app.include_router(channels.router)
 
 
 @app.get("/ok")
