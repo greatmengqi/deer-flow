@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from deerflow.agents.factory import create_deerflow_agent
-from deerflow.agents.features import RuntimeFeatures, Next, Prev
+from deerflow.agents.features import Next, Prev, RuntimeFeatures
 
 
 def _make_mock_model():
