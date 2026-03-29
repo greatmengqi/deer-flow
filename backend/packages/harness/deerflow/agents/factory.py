@@ -178,7 +178,8 @@ def _assemble_from_features(
 
     Each feature value is handled as:
       - ``False``: skip
-      - ``True``: create the built-in default middleware
+      - ``True``: create the built-in default middleware (not available for
+        ``summarization`` and ``guardrail`` — these require a custom instance)
       - ``AgentMiddleware`` instance: use directly (custom replacement)
     """
     chain: list[AgentMiddleware] = []
