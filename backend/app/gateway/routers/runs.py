@@ -21,6 +21,9 @@ from deerflow.client import DeerFlowClient
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Registry of active run cancel signals, keyed by run_id
+_active_runs: dict[str, threading.Event] = {}
+
 
 # ── Request schema ───────────────────────────────────────────────────────────
 
@@ -112,6 +115,7 @@ async def stream_run(thread_id: str, request: RunStreamRequest):
         queue: asyncio.Queue[Any] = asyncio.Queue()
         loop = asyncio.get_running_loop()
         cancel = threading.Event()
+        _active_runs[run_id] = cancel
 
         def _run():
             try:
@@ -164,6 +168,7 @@ async def stream_run(thread_id: str, request: RunStreamRequest):
 
         finally:
             cancel.set()
+            _active_runs.pop(run_id, None)
             if last_values:
                 store.update_values(thread_id, last_values)
             store.set_idle(thread_id)
@@ -177,5 +182,59 @@ async def stream_run(thread_id: str, request: RunStreamRequest):
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
             "Content-Location": f"/threads/{thread_id}/runs/{run_id}",
+        },
+    )
+
+
+@router.post("/threads/{thread_id}/runs/{run_id}/cancel")
+async def cancel_run(thread_id: str, run_id: str):
+    cancel = _active_runs.get(run_id)
+    if cancel is not None:
+        cancel.set()
+    return {"status": "cancelled"}
+
+
+@router.get("/threads/{thread_id}/runs/{run_id}/stream")
+async def join_stream(thread_id: str, run_id: str):
+    """Rejoin an existing stream. If the run is already complete, returns empty."""
+
+    async def empty_generator():
+        yield _sse("metadata", {"run_id": run_id, "thread_id": thread_id})
+        # Emit current state so SDK can restore
+        store = get_store()
+        record = store.get(thread_id)
+        if record and record.values:
+            yield _sse("values", record.values)
+        yield _sse("end", None)
+
+    return StreamingResponse(
+        empty_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/threads/{thread_id}/stream")
+async def join_thread_stream(thread_id: str):
+    """SDK joinStream calls GET /threads/{thread_id}/stream for reconnection."""
+
+    async def empty_generator():
+        store = get_store()
+        record = store.get(thread_id)
+        if record and record.values:
+            yield _sse("values", record.values)
+        yield _sse("end", None)
+
+    return StreamingResponse(
+        empty_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
         },
     )
